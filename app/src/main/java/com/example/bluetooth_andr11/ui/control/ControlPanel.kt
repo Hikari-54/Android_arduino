@@ -21,7 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.example.bluetooth_andr11.R
 import com.example.bluetooth_andr11.log.LogFilterScreen
 
 @Composable
@@ -63,54 +65,74 @@ fun ControlPanel(
         Text(text = "Акселерометр: $acc", modifier = Modifier.padding(4.dp))
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Кнопки управления устройством
+        // Надпись над кнопками
+        Text(text = "Управление устройством", modifier = Modifier.padding(bottom = 8.dp))
+
+        // Ряд кнопок с иконками
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Кнопка управления нагревом
-            Button(
-                onClick = {
-                    isHeatOn = !isHeatOn
-                    onCommandSend(if (isHeatOn) "H" else "h")
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = if (isHeatOn) Color.Red else Color.Gray),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 4.dp)
-            ) {
-                Text(text = if (isHeatOn) "ВЫКЛ НАГРЕВ" else "ВКЛ НАГРЕВ", maxLines = 1)
-            }
-
-            // Кнопка управления охлаждением
-            Button(
-                onClick = {
-                    isCoolOn = !isCoolOn
-                    onCommandSend(if (isCoolOn) "C" else "c")
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = if (isCoolOn) Color.Blue else Color.Gray),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 4.dp)
-            ) {
-                Text(text = if (isCoolOn) "ВЫКЛ ХОЛОД" else "ВКЛ ХОЛОД", maxLines = 1)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Кнопка управления освещением
-        Button(
-            onClick = {
-                isLightOn = !isLightOn
-                onCommandSend(if (isLightOn) "L" else "l")
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = if (isLightOn) Color.Yellow else Color.Gray),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(4.dp)
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            Text(text = if (isLightOn) "ВЫКЛ СВЕТ" else "ВКЛ СВЕТ", maxLines = 1)
+            // Кнопка "Нагрев"
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Button(
+                    onClick = {
+                        isHeatOn = !isHeatOn
+                        onCommandSend(if (isHeatOn) "H" else "h")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isHeatOn) Color(0xFFFF4500) else Color.Gray),
+                    modifier = Modifier.padding(4.dp)
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(id = R.drawable.fire),
+                        contentDescription = "Нагрев",
+                        tint = Color.White
+                    )
+                }
+                Text(text = "Нагрев", modifier = Modifier.padding(top = 4.dp))
+            }
+
+            // Кнопка "Холод"
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Button(
+                    onClick = {
+                        isCoolOn = !isCoolOn
+                        onCommandSend(if (isCoolOn) "C" else "c")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isCoolOn) Color(0xFF1E90FF) else Color.Gray),
+                    modifier = Modifier.padding(4.dp)
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(id = R.drawable.snowflake),
+                        contentDescription = "Холод",
+                        tint = Color.White
+                    )
+                }
+                Text(text = "Холод", modifier = Modifier.padding(top = 4.dp))
+            }
+
+            // Кнопка "Свет"
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Button(
+                    onClick = {
+                        isLightOn = !isLightOn
+                        onCommandSend(if (isLightOn) "L" else "l")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isLightOn) Color(
+                        0xFFE1E100
+                    ) else Color.Gray),
+                    modifier = Modifier.padding(4.dp)
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(id = R.drawable.light),
+                        contentDescription = "Свет",
+                        tint = Color.White
+                    )
+                }
+                Text(text = "Свет", modifier = Modifier.padding(top = 4.dp))
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))

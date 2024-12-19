@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
@@ -319,6 +320,23 @@ fun BluetoothScreen(
             functionState = functionState,
             coordinates = coordinates,
             acc = acc,
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun ControlPanelPreview() {
+    Bluetooth_andr11Theme {
+        ControlPanel(
+            onCommandSend = { /* Никакой команды, просто для просмотра */ },
+            batteryPercent = "75",
+            temp1 = "22",
+            temp2 = "19",
+            hallState = "Норма",
+            functionState = "Активно",
+            coordinates = "55.751244, 37.618423",
+            acc = "0.01, 0.02, 0.03",
         )
     }
 }
