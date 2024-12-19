@@ -34,7 +34,6 @@ fun ControlPanel(
     functionState: String,
     coordinates: String,
     acc: String,
-    responseMessage: String
 ) {
     // Состояния кнопок
     var isHeatOn by remember { mutableStateOf(false) }
@@ -62,8 +61,6 @@ fun ControlPanel(
         Text(text = "Координаты: $coordinates", modifier = Modifier.padding(4.dp))
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = "Акселерометр: $acc", modifier = Modifier.padding(4.dp))
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Последний ответ: $responseMessage", modifier = Modifier.padding(4.dp))
         Spacer(modifier = Modifier.height(16.dp))
 
         // Кнопки управления устройством

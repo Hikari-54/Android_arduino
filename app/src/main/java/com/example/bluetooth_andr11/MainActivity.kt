@@ -1,8 +1,12 @@
 package com.example.bluetooth_andr11
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,13 +24,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.LocationManager
-import com.example.bluetooth_andr11.log.LogFilterScreen
 import com.example.bluetooth_andr11.permissions.PermissionHelper
+import com.example.bluetooth_andr11.ui.AppTopBar
 import com.example.bluetooth_andr11.ui.control.ControlPanel
 import com.example.bluetooth_andr11.ui.theme.Bluetooth_andr11Theme
 import com.google.android.gms.location.LocationServices
@@ -40,21 +43,39 @@ class MainActivity : ComponentActivity() {
     private val requestPermissionsLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             val allGranted = permissions.all { it.value }
-            Toast.makeText(
-                this,
-                if (allGranted) "Все разрешения предоставлены" else "Разрешения отклонены",
-                Toast.LENGTH_SHORT
-            ).show()
+            if (allGranted) {
+                Toast.makeText(this, "Все разрешения предоставлены", Toast.LENGTH_SHORT).show()
+                initializeAppFeatures()
+            } else {
+                val permanentlyDeniedPermissions = permissions.filter { permission ->
+                    !permission.value && !ActivityCompat.shouldShowRequestPermissionRationale(
+                        this,
+                        permission.key
+                    )
+                }
+
+                if (permanentlyDeniedPermissions.isNotEmpty()) {
+                    Toast.makeText(
+                        this,
+                        "Некоторые разрешения отклонены навсегда. Пожалуйста, предоставьте их в настройках приложения.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    redirectToAppSettings()
+                } else {
+                    showPermissionsRationale()
+                }
+            }
         }
 
-    private val receivedData = mutableStateOf("")
-    private val batteryPercent = mutableStateOf("0")
-    private val temp1 = mutableStateOf("0")
-    private val temp2 = mutableStateOf("0")
-    private val hallState = mutableStateOf("Unknown")
-    private val functionState = mutableStateOf("Inactive")
-    private val coordinates = mutableStateOf("Неизвестно")
-    private val accelerometerData = mutableStateOf("0, 0, 0")
+
+    private val batteryPercent = mutableStateOf(50) // Информация о батарее
+    private val isBluetoothEnabled = mutableStateOf(false) // Состояние Bluetooth
+    private val coordinates = mutableStateOf("Неизвестно") // Координаты
+    private val temp1 = mutableStateOf("--") // Температура 1
+    private val temp2 = mutableStateOf("--") // Температура 2
+    private val hallState = mutableStateOf("--") // Состояние датчика Холла
+    private val functionState = mutableStateOf("--") // Функциональное состояние
+    private val accelerometerData = mutableStateOf("--") // Данные акселерометра
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,36 +87,91 @@ class MainActivity : ComponentActivity() {
             fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         )
 
-        locationManager.startLocationUpdates()
-        coordinates.value = locationManager.getLocationCoordinates()
+        // Проверяем наличие всех необходимых разрешений
+        if (permissionHelper.hasCriticalPermissions()) {
+            initializeAppFeatures()
+        } else {
+            permissionHelper.requestPermissions()
+        }
 
         setContent {
             Bluetooth_andr11Theme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    BluetoothScreen(
-                        modifier = Modifier.padding(innerPadding),
-                        onRequestPermissions = ::handleRequestPermissions,
-                        onCheckBluetooth = ::handleCheckBluetooth,
-                        onConnectToDevice = ::handleConnectToDevice,
-                        onStartLocationUpdates = { locationManager.startLocationUpdates() },
-                        onStopLocationUpdates = { locationManager.stopLocationUpdates() },
-                        receivedData = receivedData.value,
-                        onCommandSend = ::sendCommandToDevice,
-                        batteryPercent = batteryPercent.value,
-                        temp1 = temp1.value,
-                        temp2 = temp2.value,
-                        hallState = hallState.value,
-                        functionState = functionState.value,
-                        coordinates = locationManager.getLocationCoordinates(),
-                        acc = accelerometerData.value
-                    )
-                }
+                Scaffold(
+                    topBar = {
+                        AppTopBar(
+                            batteryLevel = batteryPercent.value,
+                            isBluetoothEnabled = isBluetoothEnabled.value,
+                            onBluetoothClick = ::toggleBluetooth
+                        )
+                    },
+                    content = { innerPadding ->
+                        BluetoothScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            onRequestPermissions = ::handleRequestPermissions,
+                            onCheckBluetooth = ::handleCheckBluetooth,
+                            onConnectToDevice = ::handleConnectToDevice,
+                            onCommandSend = ::sendCommandToDevice,
+                            batteryPercent = "${batteryPercent.value}",
+                            temp1 = temp1.value,
+                            temp2 = temp2.value,
+                            hallState = hallState.value,
+                            functionState = functionState.value,
+                            coordinates = coordinates.value,
+                            acc = accelerometerData.value
+                        )
+                    }
+                )
             }
         }
     }
 
+    private fun initializeAppFeatures() {
+        // Запуск обновления местоположения
+        locationManager.startLocationUpdates { newCoordinates ->
+            coordinates.value = newCoordinates
+        }
+
+        // Включаем Bluetooth, если это необходимо
+        isBluetoothEnabled.value = bluetoothHelper.isBluetoothEnabled()
+    }
+
+    private fun showPermissionsRationale() {
+        val missingPermissions = permissionHelper.getMissingPermissions()
+        val shouldShowRationale = missingPermissions.any { permission ->
+            ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+        }
+
+        if (shouldShowRationale) {
+            // Показываем объяснение и повторно запрашиваем разрешения
+            Toast.makeText(
+                this,
+                "Для работы приложения необходимо предоставить все разрешения.",
+                Toast.LENGTH_LONG
+            ).show()
+            permissionHelper.requestPermissions()
+        } else {
+            // Если пользователь выбрал "Не спрашивать снова", показываем инструкцию
+            Toast.makeText(
+                this,
+                "Перейдите в настройки приложения и предоставьте разрешения вручную.",
+                Toast.LENGTH_LONG
+            ).show()
+            // Опционально: перенаправить в настройки приложения
+            redirectToAppSettings()
+        }
+    }
+
+    private fun redirectToAppSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", packageName, null)
+        }
+        startActivity(intent)
+    }
+
+
     private fun handleRequestPermissions() {
-        if (!permissionHelper.hasAllPermissions()) {
+        val missingPermissions = permissionHelper.getMissingPermissions()
+        if (missingPermissions.isNotEmpty()) {
             permissionHelper.requestPermissions()
         } else {
             Toast.makeText(this, "Все разрешения уже предоставлены", Toast.LENGTH_SHORT).show()
@@ -108,21 +184,41 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // Проверка разрешения BLUETOOTH_CONNECT
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.BLUETOOTH_CONNECT
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!permissionHelper.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
-                permissionHelper.requestPermissions()
+                Toast.makeText(this, "Разрешение BLUETOOTH_CONNECT отсутствует", Toast.LENGTH_SHORT)
+                    .show()
+                permissionHelper.requestSpecificPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                return
             }
-            Toast.makeText(this, "Разрешение BLUETOOTH_CONNECT отсутствует", Toast.LENGTH_SHORT)
+        } else {
+            // Для версий ниже API 31 ничего делать не нужно, так как это разрешение отсутствует
+            Toast.makeText(
+                this,
+                "BLUETOOTH_CONNECT не требуется для этой версии Android",
+                Toast.LENGTH_SHORT
+            )
                 .show()
-            return
         }
 
+
         bluetoothHelper.showDeviceSelectionDialog(this) { device ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // Проверяем разрешение BLUETOOTH_CONNECT
+                if (!permissionHelper.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+                    permissionHelper.requestSpecificPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                }
+                Toast.makeText(this, "Разрешение BLUETOOTH_CONNECT отсутствует", Toast.LENGTH_SHORT)
+                    .show()
+                return@showDeviceSelectionDialog // Выходим из блока, если разрешение отсутствует
+            }
+
+            // Устройство выбрано, выводим его имя
             Toast.makeText(
                 this,
                 "Выбрано устройство: ${device.name ?: "Unknown"}",
@@ -131,18 +227,46 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-
     private fun handleConnectToDevice() {
         bluetoothHelper.showDeviceSelectionDialog(this) { device ->
             bluetoothHelper.connectToDevice(device) { success, message ->
                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                 if (success) {
                     bluetoothHelper.listenForData { data ->
-                        receivedData.value = data
-                        parseReceivedData(data)
+                        handleReceivedData(data)
                     }
                 }
             }
+        }
+    }
+
+    private fun handleReceivedData(data: String) {
+        parseArduinoData(data)
+    }
+
+    private fun parseArduinoData(data: String) {
+        try {
+            val parts = data.split(",")
+            if (parts.size == 6) {
+                batteryPercent.value = parts[0].trim().toIntOrNull() ?: 0
+                temp1.value = parts[1].trim()
+                temp2.value = parts[2].trim()
+                hallState.value = parts[3].trim()
+                functionState.value = parts[4].trim()
+                accelerometerData.value = parts[5].trim()
+            } else {
+                Toast.makeText(
+                    this,
+                    "Некорректный формат данных: $data",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                "Ошибка парсинга данных: ${e.message}",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -150,16 +274,13 @@ class MainActivity : ComponentActivity() {
         bluetoothHelper.sendCommand(command)
     }
 
-    private fun parseReceivedData(data: String) {
-        val parts = data.split(",")
-        if (parts.size >= 6) {
-            batteryPercent.value = parts[0].trim()
-            temp1.value = parts[1].trim()
-            temp2.value = parts[2].trim()
-            hallState.value = parts[3].trim()
-            functionState.value = parts[4].trim()
-            accelerometerData.value = parts[5].trim()
-        }
+    private fun toggleBluetooth() {
+        isBluetoothEnabled.value = !isBluetoothEnabled.value
+        Toast.makeText(
+            this,
+            if (isBluetoothEnabled.value) "Bluetooth включен" else "Bluetooth выключен",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 }
 
@@ -169,9 +290,6 @@ fun BluetoothScreen(
     onRequestPermissions: () -> Unit,
     onCheckBluetooth: () -> Unit,
     onConnectToDevice: () -> Unit,
-    onStartLocationUpdates: () -> Unit,
-    onStopLocationUpdates: () -> Unit,
-    receivedData: String,
     onCommandSend: (String) -> Unit,
     batteryPercent: String,
     temp1: String,
@@ -199,16 +317,9 @@ fun BluetoothScreen(
         Button(onClick = onConnectToDevice) {
             Text("Выбрать устройство")
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = onStartLocationUpdates) {
-            Text("Запустить обновление местоположения")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = onStopLocationUpdates) {
-            Text("Остановить обновление местоположения")
-        }
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Панель управления
         ControlPanel(
             onCommandSend = onCommandSend,
             batteryPercent = batteryPercent,
@@ -218,13 +329,6 @@ fun BluetoothScreen(
             functionState = functionState,
             coordinates = coordinates,
             acc = acc,
-            responseMessage = receivedData
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
-        val context = LocalContext.current
-        LogFilterScreen { startDate, endDate ->
-            Toast.makeText(context, "Фильтр: с $startDate по $endDate", Toast.LENGTH_SHORT).show()
-        }
     }
 }
