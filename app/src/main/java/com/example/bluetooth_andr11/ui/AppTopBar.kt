@@ -21,19 +21,20 @@ import com.example.bluetooth_andr11.R
 
 @Composable
 fun AppTopBar(
-    batteryLevel: Int, // Уровень заряда батареи
-    isBluetoothEnabled: Boolean, // Статус Bluetooth
-    onBluetoothClick: () -> Unit // Обработчик клика по Bluetooth
+    batteryLevel: Int,
+    isBluetoothConnected: Boolean,
+    allPermissionsGranted: Boolean,
+    onPermissionsClick: () -> Unit,
+    onBluetoothClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252525)) // Фон верхней панели
+            .background(Color(0xFF252525))
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // Название приложения
         Text(
             text = "D.Bag",
             color = Color.White,
@@ -41,20 +42,30 @@ fun AppTopBar(
         )
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Иконка Bluetooth
-            IconButton(onClick = onBluetoothClick) {
+            IconButton(onClick = onPermissionsClick) {
                 Icon(
                     painter = painterResource(
-                        if (isBluetoothEnabled) R.drawable.bluetooth else R.drawable.bluetooth_off
+                        if (allPermissionsGranted) R.drawable.lock_check else R.drawable.key_alert
                     ),
-                    contentDescription = "Bluetooth",
-                    tint = if (isBluetoothEnabled) Color.Blue else Color.Gray
+                    contentDescription = "Permissions",
+                    tint = if (allPermissionsGranted) Color.Green else Color.Red
                 )
             }
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Иконка батареи и текст
+            IconButton(onClick = onBluetoothClick) {
+                Icon(
+                    painter = painterResource(
+                        if (isBluetoothConnected) R.drawable.bluetooth else R.drawable.bluetooth_off
+                    ),
+                    contentDescription = "Bluetooth",
+                    tint = if (isBluetoothConnected) Color.Green else Color.Red
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     painter = painterResource(getBatteryIcon(batteryLevel)),

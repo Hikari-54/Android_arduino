@@ -17,9 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
@@ -40,42 +38,30 @@ class MainActivity : ComponentActivity() {
     private lateinit var permissionHelper: PermissionHelper
     private lateinit var locationManager: LocationManager
 
-    private val requestPermissionsLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-            val allGranted = permissions.all { it.value }
-            if (allGranted) {
-                Toast.makeText(this, "Все разрешения предоставлены", Toast.LENGTH_SHORT).show()
-                initializeAppFeatures()
-            } else {
-                val permanentlyDeniedPermissions = permissions.filter { permission ->
-                    !permission.value && !ActivityCompat.shouldShowRequestPermissionRationale(
-                        this,
-                        permission.key
-                    )
-                }
 
-                if (permanentlyDeniedPermissions.isNotEmpty()) {
-                    Toast.makeText(
-                        this,
-                        "Некоторые разрешения отклонены навсегда. Пожалуйста, предоставьте их в настройках приложения.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    redirectToAppSettings()
-                } else {
-                    showPermissionsRationale()
-                }
-            }
-        }
-
-
-    private val batteryPercent = mutableStateOf(50) // Информация о батарее
-    private val isBluetoothEnabled = mutableStateOf(false) // Состояние Bluetooth
+    private val allPermissionsGranted = mutableStateOf(false)
+    private val batteryPercent = mutableStateOf(0) // Информация о батарее
+    private val isBluetoothConnected = mutableStateOf(false) // Состояние подключения Bluetooth
     private val coordinates = mutableStateOf("Неизвестно") // Координаты
     private val temp1 = mutableStateOf("--") // Температура 1
     private val temp2 = mutableStateOf("--") // Температура 2
     private val hallState = mutableStateOf("--") // Состояние датчика Холла
     private val functionState = mutableStateOf("--") // Функциональное состояние
     private val accelerometerData = mutableStateOf("--") // Данные акселерометра
+
+
+    private val requestPermissionsLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            val allGranted = permissions.all { it.value }
+            allPermissionsGranted.value = allGranted
+
+            if (allGranted) {
+                Toast.makeText(this, "Все разрешения предоставлены", Toast.LENGTH_SHORT).show()
+                initializeAppFeatures()
+            } else {
+                handlePermissionsDenial(permissions)
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,7 +74,8 @@ class MainActivity : ComponentActivity() {
         )
 
         // Проверяем наличие всех необходимых разрешений
-        if (permissionHelper.hasCriticalPermissions()) {
+        allPermissionsGranted.value = permissionHelper.hasAllPermissions()
+        if (allPermissionsGranted.value) {
             initializeAppFeatures()
         } else {
             permissionHelper.requestPermissions()
@@ -100,16 +87,15 @@ class MainActivity : ComponentActivity() {
                     topBar = {
                         AppTopBar(
                             batteryLevel = batteryPercent.value,
-                            isBluetoothEnabled = isBluetoothEnabled.value,
-                            onBluetoothClick = ::toggleBluetooth
+                            isBluetoothConnected = isBluetoothConnected.value,
+                            allPermissionsGranted = allPermissionsGranted.value,
+                            onPermissionsClick = ::handlePermissionsIconClick,
+                            onBluetoothClick = ::handleConnectToDevice
                         )
                     },
                     content = { innerPadding ->
                         BluetoothScreen(
                             modifier = Modifier.padding(innerPadding),
-                            onRequestPermissions = ::handleRequestPermissions,
-                            onCheckBluetooth = ::handleCheckBluetooth,
-                            onConnectToDevice = ::handleConnectToDevice,
                             onCommandSend = ::sendCommandToDevice,
                             batteryPercent = "${batteryPercent.value}",
                             temp1 = temp1.value,
@@ -130,10 +116,37 @@ class MainActivity : ComponentActivity() {
         locationManager.startLocationUpdates { newCoordinates ->
             coordinates.value = newCoordinates
         }
-
-        // Включаем Bluetooth, если это необходимо
-        isBluetoothEnabled.value = bluetoothHelper.isBluetoothEnabled()
     }
+
+    private fun handlePermissionsDenial(permissions: Map<String, Boolean>) {
+        val permanentlyDeniedPermissions = permissions.filter { permission ->
+            !permission.value && !ActivityCompat.shouldShowRequestPermissionRationale(
+                this,
+                permission.key
+            )
+        }
+
+        if (permanentlyDeniedPermissions.isNotEmpty()) {
+            Toast.makeText(
+                this,
+                "Некоторые разрешения отклонены навсегда. Пожалуйста, предоставьте их в настройках приложения.",
+                Toast.LENGTH_LONG
+            ).show()
+            redirectToAppSettings()
+        } else {
+            showPermissionsRationale()
+        }
+    }
+
+    private fun handlePermissionsIconClick() {
+        if (!allPermissionsGranted.value) {
+            permissionHelper.requestPermissions()
+        } else {
+            Toast.makeText(this, "Все необходимые разрешения уже предоставлены", Toast.LENGTH_SHORT)
+                .show()
+        }
+    }
+
 
     private fun showPermissionsRationale() {
         val missingPermissions = permissionHelper.getMissingPermissions()
@@ -170,8 +183,7 @@ class MainActivity : ComponentActivity() {
 
 
     private fun handleRequestPermissions() {
-        val missingPermissions = permissionHelper.getMissingPermissions()
-        if (missingPermissions.isNotEmpty()) {
+        if (!allPermissionsGranted.value) {
             permissionHelper.requestPermissions()
         } else {
             Toast.makeText(this, "Все разрешения уже предоставлены", Toast.LENGTH_SHORT).show()
@@ -231,6 +243,7 @@ class MainActivity : ComponentActivity() {
         bluetoothHelper.showDeviceSelectionDialog(this) { device ->
             bluetoothHelper.connectToDevice(device) { success, message ->
                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                isBluetoothConnected.value = success
                 if (success) {
                     bluetoothHelper.listenForData { data ->
                         handleReceivedData(data)
@@ -273,23 +286,11 @@ class MainActivity : ComponentActivity() {
     private fun sendCommandToDevice(command: String) {
         bluetoothHelper.sendCommand(command)
     }
-
-    private fun toggleBluetooth() {
-        isBluetoothEnabled.value = !isBluetoothEnabled.value
-        Toast.makeText(
-            this,
-            if (isBluetoothEnabled.value) "Bluetooth включен" else "Bluetooth выключен",
-            Toast.LENGTH_SHORT
-        ).show()
-    }
 }
 
 @Composable
 fun BluetoothScreen(
     modifier: Modifier = Modifier,
-    onRequestPermissions: () -> Unit,
-    onCheckBluetooth: () -> Unit,
-    onConnectToDevice: () -> Unit,
     onCommandSend: (String) -> Unit,
     batteryPercent: String,
     temp1: String,
@@ -306,17 +307,6 @@ fun BluetoothScreen(
         verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Button(onClick = onRequestPermissions) {
-            Text("Запросить разрешения")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = onCheckBluetooth) {
-            Text("Проверить Bluetooth")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = onConnectToDevice) {
-            Text("Выбрать устройство")
-        }
         Spacer(modifier = Modifier.height(16.dp))
 
         // Панель управления
