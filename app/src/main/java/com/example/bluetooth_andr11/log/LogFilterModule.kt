@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -83,7 +83,7 @@ fun FilteredLogScreen(startDate: String, endDate: String) {
         ) {
             items(logEntries) { entry ->
                 Text(text = entry)
-                Divider()
+                HorizontalDivider()
             }
         }
     }
@@ -141,7 +141,13 @@ fun DatePickerButton(label: String, date: String, onDateSelected: (String) -> Un
         DatePickerDialog(
             context,
             { _, year, month, day ->
-                val selectedDate = String.format("%04d-%02d-%02d", year, month + 1, day)
+                val selectedDate = String.format(
+                    Locale.getDefault(),
+                    "%04d-%02d-%02d",
+                    year,
+                    month + 1,
+                    day
+                )
                 onDateSelected(selectedDate)
             },
             calendar.get(Calendar.YEAR),

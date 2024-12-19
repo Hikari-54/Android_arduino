@@ -34,14 +34,6 @@ class PermissionHelper(
         return requiredPermissions.all { hasPermission(it) }
     }
 
-    // Запрос разрешений вручную
-    fun requestPermissionsManually() {
-        val missingPermissions = getMissingPermissions()
-        if (missingPermissions.isNotEmpty()) {
-            requestPermissionLauncher?.launch(missingPermissions.toTypedArray())
-        }
-    }
-
     // Проверка наличия конкретного разрешения
     fun hasPermission(permission: String): Boolean {
         return ContextCompat.checkSelfPermission(
@@ -74,21 +66,29 @@ class PermissionHelper(
         }
     }
 
+    // Запрос разрешений вручную
+//    fun requestPermissionsManually() {
+//        val missingPermissions = getMissingPermissions()
+//        if (missingPermissions.isNotEmpty()) {
+//            requestPermissionLauncher?.launch(missingPermissions.toTypedArray())
+//        }
+//    }
+
     // Проверка, отсутствуют ли критически важные разрешения
-    fun hasCriticalPermissions(): Boolean {
-        val criticalPermissions = mutableListOf(
-            Manifest.permission.ACCESS_FINE_LOCATION
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            criticalPermissions.addAll(
-                listOf(
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.BLUETOOTH_SCAN
-                )
-            )
-        }
-        return criticalPermissions.all { hasPermission(it) }
-    }
+//    fun hasCriticalPermissions(): Boolean {
+//        val criticalPermissions = mutableListOf(
+//            Manifest.permission.ACCESS_FINE_LOCATION
+//        )
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//            criticalPermissions.addAll(
+//                listOf(
+//                    Manifest.permission.BLUETOOTH_CONNECT,
+//                    Manifest.permission.BLUETOOTH_SCAN
+//                )
+//            )
+//        }
+//        return criticalPermissions.all { hasPermission(it) }
+//    }
 
 
 }

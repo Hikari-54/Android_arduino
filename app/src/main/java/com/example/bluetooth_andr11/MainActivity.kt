@@ -181,64 +181,6 @@ class MainActivity : ComponentActivity() {
         startActivity(intent)
     }
 
-
-    private fun handleRequestPermissions() {
-        if (!allPermissionsGranted.value) {
-            permissionHelper.requestPermissions()
-        } else {
-            Toast.makeText(this, "Все разрешения уже предоставлены", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun handleCheckBluetooth() {
-        if (!bluetoothHelper.isBluetoothEnabled()) {
-            Toast.makeText(this, "Bluetooth выключен", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!permissionHelper.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
-                Toast.makeText(this, "Разрешение BLUETOOTH_CONNECT отсутствует", Toast.LENGTH_SHORT)
-                    .show()
-                permissionHelper.requestSpecificPermission(Manifest.permission.BLUETOOTH_CONNECT)
-                return
-            }
-        } else {
-            // Для версий ниже API 31 ничего делать не нужно, так как это разрешение отсутствует
-            Toast.makeText(
-                this,
-                "BLUETOOTH_CONNECT не требуется для этой версии Android",
-                Toast.LENGTH_SHORT
-            )
-                .show()
-        }
-
-
-        bluetoothHelper.showDeviceSelectionDialog(this) { device ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.BLUETOOTH_CONNECT
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                // Проверяем разрешение BLUETOOTH_CONNECT
-                if (!permissionHelper.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
-                    permissionHelper.requestSpecificPermission(Manifest.permission.BLUETOOTH_CONNECT)
-                }
-                Toast.makeText(this, "Разрешение BLUETOOTH_CONNECT отсутствует", Toast.LENGTH_SHORT)
-                    .show()
-                return@showDeviceSelectionDialog // Выходим из блока, если разрешение отсутствует
-            }
-
-            // Устройство выбрано, выводим его имя
-            Toast.makeText(
-                this,
-                "Выбрано устройство: ${device.name ?: "Unknown"}",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
     private fun handleConnectToDevice() {
         bluetoothHelper.showDeviceSelectionDialog(this) { device ->
             bluetoothHelper.connectToDevice(device) { success, message ->
@@ -290,6 +232,63 @@ class MainActivity : ComponentActivity() {
     private fun sendCommandToDevice(command: String) {
         bluetoothHelper.sendCommand(command)
     }
+
+//    private fun handleRequestPermissions() {
+//        if (!allPermissionsGranted.value) {
+//            permissionHelper.requestPermissions()
+//        } else {
+//            Toast.makeText(this, "Все разрешения уже предоставлены", Toast.LENGTH_SHORT).show()
+//        }
+//    }
+
+//    private fun handleCheckBluetooth() {
+//        if (!bluetoothHelper.isBluetoothEnabled()) {
+//            Toast.makeText(this, "Bluetooth выключен", Toast.LENGTH_SHORT).show()
+//            return
+//        }
+//
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//            if (!permissionHelper.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+//                Toast.makeText(this, "Разрешение BLUETOOTH_CONNECT отсутствует", Toast.LENGTH_SHORT)
+//                    .show()
+//                permissionHelper.requestSpecificPermission(Manifest.permission.BLUETOOTH_CONNECT)
+//                return
+//            }
+//        } else {
+//            // Для версий ниже API 31 ничего делать не нужно, так как это разрешение отсутствует
+//            Toast.makeText(
+//                this,
+//                "BLUETOOTH_CONNECT не требуется для этой версии Android",
+//                Toast.LENGTH_SHORT
+//            )
+//                .show()
+//        }
+//
+//
+//        bluetoothHelper.showDeviceSelectionDialog(this) { device ->
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+//                ActivityCompat.checkSelfPermission(
+//                    this,
+//                    Manifest.permission.BLUETOOTH_CONNECT
+//                ) != PackageManager.PERMISSION_GRANTED
+//            ) {
+//                // Проверяем разрешение BLUETOOTH_CONNECT
+//                if (!permissionHelper.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+//                    permissionHelper.requestSpecificPermission(Manifest.permission.BLUETOOTH_CONNECT)
+//                }
+//                Toast.makeText(this, "Разрешение BLUETOOTH_CONNECT отсутствует", Toast.LENGTH_SHORT)
+//                    .show()
+//                return@showDeviceSelectionDialog // Выходим из блока, если разрешение отсутствует
+//            }
+//
+//            // Устройство выбрано, выводим его имя
+//            Toast.makeText(
+//                this,
+//                "Выбрано устройство: ${device.name ?: "Unknown"}",
+//                Toast.LENGTH_SHORT
+//            ).show()
+//        }
+//    }
 }
 
 @Composable
