@@ -60,11 +60,11 @@ class PermissionHelper(
     }
 
     // Упрощенный запрос конкретного разрешения
-    fun requestSpecificPermission(permission: String) {
-        if (!hasPermission(permission)) {
-            requestPermissionLauncher?.launch(arrayOf(permission))
-        }
-    }
+//    fun requestSpecificPermission(permission: String) {
+//        if (!hasPermission(permission)) {
+//            requestPermissionLauncher?.launch(arrayOf(permission))
+//        }
+//    }
 
     // Запрос разрешений вручную
 //    fun requestPermissionsManually() {
