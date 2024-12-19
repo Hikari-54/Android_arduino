@@ -3,20 +3,33 @@ package com.example.bluetooth_andr11.log
 import android.app.DatePickerDialog
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import java.io.File
 import java.text.ParseException
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
@@ -39,7 +52,10 @@ fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
                 onFilterApplied(startDate, endDate)
             }
         }) {
-            Text("Применить фильтр")
+            Text(
+                "Применить фильтр",
+                style = MaterialTheme.typography.bodyLarge
+            )
         }
 
         if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
@@ -135,6 +151,16 @@ fun DatePickerButton(label: String, date: String, onDateSelected: (String) -> Un
     }
 
     Button(onClick = { datePickerDialog.show() }) {
-        Text("$label: ${if (date.isNotEmpty()) date else "не выбрана"}")
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = if (date.isNotEmpty()) date else "не выбрана",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
     }
 }
+

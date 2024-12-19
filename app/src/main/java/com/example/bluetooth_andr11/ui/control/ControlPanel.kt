@@ -23,19 +23,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.bluetooth_andr11.R
 import com.example.bluetooth_andr11.log.LogFilterScreen
 
 @Composable
 fun ControlPanel(
     onCommandSend: (String) -> Unit,
-    batteryPercent: String,
     temp1: String,
     temp2: String,
     hallState: String,
-    functionState: String,
+//    functionState: String,
     coordinates: String,
-    acc: String,
+//    acc: String,
 ) {
     // Состояния кнопок
     var isHeatOn by remember { mutableStateOf(false) }
@@ -46,27 +46,38 @@ fun ControlPanel(
         modifier = Modifier
             .fillMaxSize()
             .padding(10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = Alignment.Start,
         verticalArrangement = Arrangement.Top
     ) {
         // Отображение данных устройства
-        Text(text = "Уровень заряда батареи: $batteryPercent%", modifier = Modifier.padding(4.dp))
+        Text(
+            text = "Температура верхний отсек: $temp1°C",
+            modifier = Modifier.padding(4.dp),
+            fontSize = 18.sp
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Температура 1: $temp1°C", modifier = Modifier.padding(4.dp))
+        Text(
+            text = "Температура нижний отсек: $temp2°C",
+            modifier = Modifier.padding(4.dp),
+            fontSize = 18.sp
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Температура 2: $temp2°C", modifier = Modifier.padding(4.dp))
+        Text(
+            text = "Статус: $hallState",
+            modifier = Modifier.padding(4.dp),
+            fontSize = 18.sp
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Состояние датчика Холла: $hallState", modifier = Modifier.padding(4.dp))
+        Text(
+            text = "Координаты: $coordinates",
+            modifier = Modifier.padding(4.dp),
+            fontSize = 18.sp
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Функциональное состояние: $functionState", modifier = Modifier.padding(4.dp))
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Координаты: $coordinates", modifier = Modifier.padding(4.dp))
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Акселерометр: $acc", modifier = Modifier.padding(4.dp))
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Надпись над кнопками
-        Text(text = "Управление устройством", modifier = Modifier.padding(bottom = 8.dp))
+        // Text(text = "Функциональное состояние: $functionState", modifier = Modifier.padding(4.dp))
+        // Spacer(modifier = Modifier.height(8.dp))
+        // Text(text = "Акселерометр: $acc", modifier = Modifier.padding(4.dp))
+        // Spacer(modifier = Modifier.height(16.dp))
 
         // Ряд кнопок с иконками
         Row(
@@ -82,7 +93,11 @@ fun ControlPanel(
                         isHeatOn = !isHeatOn
                         onCommandSend(if (isHeatOn) "H" else "h")
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isHeatOn) Color(0xFFFF4500) else Color.Gray),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isHeatOn) Color(
+                            0xFFFF4500
+                        ) else Color.Gray
+                    ),
                     modifier = Modifier.padding(4.dp)
                 ) {
                     androidx.compose.material3.Icon(
@@ -101,7 +116,11 @@ fun ControlPanel(
                         isCoolOn = !isCoolOn
                         onCommandSend(if (isCoolOn) "C" else "c")
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isCoolOn) Color(0xFF1E90FF) else Color.Gray),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isCoolOn) Color(
+                            0xFF1E90FF
+                        ) else Color.Gray
+                    ),
                     modifier = Modifier.padding(4.dp)
                 ) {
                     androidx.compose.material3.Icon(
@@ -120,9 +139,11 @@ fun ControlPanel(
                         isLightOn = !isLightOn
                         onCommandSend(if (isLightOn) "L" else "l")
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isLightOn) Color(
-                        0xFFE1E100
-                    ) else Color.Gray),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isLightOn) Color(
+                            0xFFE1E100
+                        ) else Color.Gray
+                    ),
                     modifier = Modifier.padding(4.dp)
                 ) {
                     androidx.compose.material3.Icon(

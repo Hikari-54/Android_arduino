@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Looper
 import androidx.compose.runtime.mutableStateOf
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -17,9 +16,9 @@ class LocationManager(
     private val context: Context,
     private val fusedLocationClient: FusedLocationProviderClient
 ) {
-    private lateinit var locationCallback: LocationCallback
     private val locationCoordinates = mutableStateOf("Неизвестно")
     private var isUpdatingLocation = false
+    private var locationCallback: LocationCallback? = null
 
     init {
         setupLocationCallback()
@@ -29,7 +28,7 @@ class LocationManager(
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 locationResult.lastLocation?.let { location ->
-                    val coordinates = "Широта: ${location.latitude}, Долгота: ${location.longitude}"
+                    val coordinates = "${location.latitude}, ${location.longitude}"
                     locationCoordinates.value = coordinates
                 }
             }
@@ -42,56 +41,49 @@ class LocationManager(
         }.build()
     }
 
-    fun startLocationUpdates(onLocationUpdated: (String) -> Unit) {
-        if (ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED &&
-            ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            // Permissions are missing, gracefully handle this
-            return
-        }
-
-        val locationRequest = createLocationRequest()
-
-        fusedLocationClient.requestLocationUpdates(
-            locationRequest,
-            object : LocationCallback() {
-                override fun onLocationResult(locationResult: LocationResult) {
-                    locationResult.lastLocation?.let { location ->
-                        val coordinates =
-                            "Широта: ${location.latitude}, Долгота: ${location.longitude}"
-                        locationCoordinates.value = coordinates
-                        onLocationUpdated(coordinates)
-                    }
-                }
-            },
-            Looper.getMainLooper()
-        )
-
-        isUpdatingLocation = true
-    }
-
-
-    fun stopLocationUpdates() {
-        if (isUpdatingLocation) {
-            fusedLocationClient.removeLocationUpdates(locationCallback)
-            isUpdatingLocation = false
-        }
-    }
-
-    fun getLocationCoordinates(): String {
-        return locationCoordinates.value
-    }
-
     private fun hasLocationPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun startLocationUpdates(onLocationUpdated: (String) -> Unit) {
+        if (!hasLocationPermission()) {
+            // Уведомляем, если отсутствуют разрешения
+            println("Permissions for location are missing")
+            return
+        }
+
+        val locationRequest = createLocationRequest()
+
+        // Удаляем предыдущий callback, если он существует
+        locationCallback?.let {
+            fusedLocationClient.removeLocationUpdates(it)
+        }
+
+        // Инициализируем новый LocationCallback
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                locationResult.lastLocation?.let { location ->
+                    val coordinates =
+                        "Широта: ${location.latitude}, Долгота: ${location.longitude}"
+                    locationCoordinates.value = coordinates
+                    onLocationUpdated(coordinates)
+                }
+            }
+        }
+
+        // Регистрируем обновления местоположения
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback!!,
+                Looper.getMainLooper()
+            )
+            isUpdatingLocation = true
+        } catch (e: SecurityException) {
+            println("Location permission is missing or denied: ${e.message}")
+        }
     }
 }

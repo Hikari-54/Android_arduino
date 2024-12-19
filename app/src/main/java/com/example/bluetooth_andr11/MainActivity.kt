@@ -98,13 +98,12 @@ class MainActivity : ComponentActivity() {
                         BluetoothScreen(
                             modifier = Modifier.padding(innerPadding),
                             onCommandSend = ::sendCommandToDevice,
-                            batteryPercent = "${batteryPercent.value}",
                             temp1 = temp1.value,
                             temp2 = temp2.value,
                             hallState = hallState.value,
-                            functionState = functionState.value,
+//                            functionState = functionState.value,
                             coordinates = coordinates.value,
-                            acc = accelerometerData.value
+//                            acc = accelerometerData.value
                         )
                     }
                 )
@@ -265,7 +264,11 @@ class MainActivity : ComponentActivity() {
                 batteryPercent.value = parts[0].trim().toIntOrNull() ?: 0
                 temp1.value = parts[1].trim()
                 temp2.value = parts[2].trim()
-                hallState.value = parts[3].trim()
+                hallState.value = when (parts[3].trim()) {
+                    "1" -> "Открыт"
+                    "0" -> "Закрыт"
+                    else -> "Неизвестно"
+                }
                 functionState.value = parts[4].trim()
                 accelerometerData.value = parts[5].trim()
             } else {
@@ -293,13 +296,12 @@ class MainActivity : ComponentActivity() {
 fun BluetoothScreen(
     modifier: Modifier = Modifier,
     onCommandSend: (String) -> Unit,
-    batteryPercent: String,
     temp1: String,
     temp2: String,
     hallState: String,
-    functionState: String,
+//    functionState: String,
     coordinates: String,
-    acc: String
+//    acc: String
 ) {
     Column(
         modifier = modifier
@@ -313,13 +315,12 @@ fun BluetoothScreen(
         // Панель управления
         ControlPanel(
             onCommandSend = onCommandSend,
-            batteryPercent = batteryPercent,
             temp1 = temp1,
             temp2 = temp2,
             hallState = hallState,
-            functionState = functionState,
+//            functionState = functionState,
             coordinates = coordinates,
-            acc = acc,
+//            acc = acc,
         )
     }
 }
@@ -330,13 +331,10 @@ fun ControlPanelPreview() {
     Bluetooth_andr11Theme {
         ControlPanel(
             onCommandSend = { /* Никакой команды, просто для просмотра */ },
-            batteryPercent = "75",
             temp1 = "22",
             temp2 = "19",
-            hallState = "Норма",
-            functionState = "Активно",
+            hallState = "Закрыто",
             coordinates = "55.751244, 37.618423",
-            acc = "0.01, 0.02, 0.03",
         )
     }
 }
