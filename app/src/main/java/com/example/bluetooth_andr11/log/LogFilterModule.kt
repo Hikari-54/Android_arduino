@@ -3,11 +3,15 @@ package com.example.bluetooth_andr11.log
 import android.app.DatePickerDialog
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -36,31 +40,49 @@ fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
 
-    Column(modifier = Modifier.padding(8.dp)) {
-        DatePickerButton("Начальная дата", startDate) { selectedDate ->
-            startDate = selectedDate
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-
-        DatePickerButton("Конечная дата", endDate) { selectedDate ->
-            endDate = selectedDate
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Button(onClick = {
-            if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
-                onFilterApplied(startDate, endDate)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Левая часть с выбором дат
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Top
+        ) {
+            DatePickerButton("Начальная дата", startDate) { selectedDate ->
+                startDate = selectedDate
             }
-        }) {
+            Spacer(modifier = Modifier.height(8.dp))
+            DatePickerButton("Конечная дата", endDate) { selectedDate ->
+                endDate = selectedDate
+            }
+        }
+
+        // Спейсер для разделения
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Правая часть с кнопкой подтверждения
+        Button(
+            onClick = {
+                if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
+                    onFilterApplied(startDate, endDate)
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.CenterVertically) // Центрирование по вертикали
+        ) {
             Text(
-                "Применить фильтр",
+                "Отфильтровать",
                 style = MaterialTheme.typography.bodyLarge
             )
         }
+    }
 
-        if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
-            FilteredLogScreen(startDate, endDate)
-        }
+    // Отображение результатов фильтрации
+    if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
+        FilteredLogScreen(startDate, endDate)
     }
 }
 

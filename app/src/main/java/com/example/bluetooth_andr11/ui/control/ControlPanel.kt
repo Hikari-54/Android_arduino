@@ -36,6 +36,7 @@ fun ControlPanel(
 //    functionState: String,
     coordinates: String,
 //    acc: String,
+    modifier: Modifier = Modifier
 ) {
     // Состояния кнопок
     var isHeatOn by remember { mutableStateOf(false) }
@@ -43,9 +44,7 @@ fun ControlPanel(
     var isLightOn by remember { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(10.dp),
+        modifier = modifier.padding(10.dp),
         horizontalAlignment = Alignment.Start,
         verticalArrangement = Arrangement.Top
     ) {

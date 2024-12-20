@@ -325,12 +325,26 @@ fun BluetoothScreen(
 @Composable
 fun ControlPanelPreview() {
     Bluetooth_andr11Theme {
-        ControlPanel(
-            onCommandSend = { /* Никакой команды, просто для просмотра */ },
-            temp1 = "22",
-            temp2 = "19",
-            hallState = "Закрыто",
-            coordinates = "55.751244, 37.618423",
+        Scaffold(
+            topBar = {
+                AppTopBar(
+                    batteryLevel = 75, // Пример уровня заряда батареи
+                    isBluetoothConnected = true, // Пример состояния подключения Bluetooth
+                    allPermissionsGranted = true, // Пример состояния разрешений
+                    onPermissionsClick = { /* Нажатие на иконку разрешений */ },
+                    onBluetoothClick = { /* Нажатие на иконку Bluetooth */ }
+                )
+            },
+            content = { innerPadding ->
+                ControlPanel(
+                    onCommandSend = { /* Никакой команды, просто для просмотра */ },
+                    temp1 = "22",
+                    temp2 = "19",
+                    hallState = "Закрыто",
+                    coordinates = "55.751244, 37.618423",
+                    modifier = Modifier.padding(innerPadding) // Учитываем отступы от TopBar
+                )
+            }
         )
     }
 }
