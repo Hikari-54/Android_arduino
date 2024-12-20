@@ -36,7 +36,7 @@ fun AppTopBar(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = "D.Bag",
+            text = "Delivery bag",
             color = Color.White,
             fontSize = 20.sp
         )

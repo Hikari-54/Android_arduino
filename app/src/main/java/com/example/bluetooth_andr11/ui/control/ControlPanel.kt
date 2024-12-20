@@ -28,14 +28,9 @@ import com.example.bluetooth_andr11.log.LogFilterScreen
 
 @Composable
 fun ControlPanel(
-    onCommandSend: (String) -> Unit,
-    temp1: String,
-    temp2: String,
-    hallState: String,
+    onCommandSend: (String) -> Unit, temp1: String, temp2: String, hallState: String,
 //    functionState: String,
-    coordinates: String,
-//    acc: String,
-    modifier: Modifier = Modifier
+    coordinates: String, acc: String, modifier: Modifier = Modifier
 ) {
     // Состояния кнопок
     var isHeatOn by remember { mutableStateOf(false) }
@@ -61,21 +56,17 @@ fun ControlPanel(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Статус: $hallState",
-            modifier = Modifier.padding(4.dp),
-            fontSize = 18.sp
+            text = "Статус: $hallState", modifier = Modifier.padding(4.dp), fontSize = 18.sp
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Координаты: $coordinates",
-            modifier = Modifier.padding(4.dp),
-            fontSize = 18.sp
+            text = "Координаты: $coordinates", modifier = Modifier.padding(4.dp), fontSize = 18.sp
         )
         Spacer(modifier = Modifier.height(8.dp))
         // Text(text = "Функциональное состояние: $functionState", modifier = Modifier.padding(4.dp))
         // Spacer(modifier = Modifier.height(8.dp))
-        // Text(text = "Акселерометр: $acc", modifier = Modifier.padding(4.dp))
-        // Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Уровень тряски: $acc", modifier = Modifier.padding(4.dp), fontSize = 18.sp)
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Ряд кнопок с иконками
         Row(
@@ -90,13 +81,11 @@ fun ControlPanel(
                     onClick = {
                         isHeatOn = !isHeatOn
                         onCommandSend(if (isHeatOn) "H" else "h")
-                    },
-                    colors = ButtonDefaults.buttonColors(
+                    }, colors = ButtonDefaults.buttonColors(
                         containerColor = if (isHeatOn) Color(
                             0xFFFF4500
                         ) else Color.Gray
-                    ),
-                    modifier = Modifier.padding(4.dp)
+                    ), modifier = Modifier.padding(4.dp)
                 ) {
                     androidx.compose.material3.Icon(
                         painter = painterResource(id = R.drawable.fire),
@@ -113,13 +102,11 @@ fun ControlPanel(
                     onClick = {
                         isCoolOn = !isCoolOn
                         onCommandSend(if (isCoolOn) "C" else "c")
-                    },
-                    colors = ButtonDefaults.buttonColors(
+                    }, colors = ButtonDefaults.buttonColors(
                         containerColor = if (isCoolOn) Color(
                             0xFF1E90FF
                         ) else Color.Gray
-                    ),
-                    modifier = Modifier.padding(4.dp)
+                    ), modifier = Modifier.padding(4.dp)
                 ) {
                     androidx.compose.material3.Icon(
                         painter = painterResource(id = R.drawable.snowflake),
@@ -136,13 +123,9 @@ fun ControlPanel(
                     onClick = {
                         isLightOn = !isLightOn
                         onCommandSend(if (isLightOn) "L" else "l")
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isLightOn) Color(
-                            0xFFE1E100
-                        ) else Color.Gray
-                    ),
-                    modifier = Modifier.padding(4.dp)
+                    }, colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isLightOn) Color(0xFFF0F000) else Color.Gray
+                    ), modifier = Modifier.padding(4.dp)
                 ) {
                     androidx.compose.material3.Icon(
                         painter = painterResource(id = R.drawable.light),
@@ -160,9 +143,7 @@ fun ControlPanel(
         val context = LocalContext.current
         LogFilterScreen { startDate, endDate ->
             Toast.makeText(
-                context,
-                "Фильтр: с $startDate по $endDate",
-                Toast.LENGTH_SHORT
+                context, "Фильтр: с $startDate по $endDate", Toast.LENGTH_SHORT
             ).show()
         }
     }

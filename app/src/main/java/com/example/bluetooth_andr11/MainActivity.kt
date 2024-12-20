@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
                             hallState = hallState.value,
 //                            functionState = functionState.value,
                             coordinates = coordinates.value,
-//                            acc = accelerometerData.value
+                            acc = accelerometerData.value
                         )
                     }
                 )
@@ -200,16 +200,30 @@ class MainActivity : ComponentActivity() {
         try {
             val parts = data.split(",")
             if (parts.size == 6) {
+                // Парсим и сохраняем данные
                 batteryPercent.value = parts[0].trim().toIntOrNull() ?: 0
                 temp1.value = parts[1].trim()
                 temp2.value = parts[2].trim()
                 hallState.value = when (parts[3].trim()) {
-                    "1" -> "Открыт"
-                    "0" -> "Закрыт"
+                    "1" -> "Закрыт"
+                    "0" -> "Открыт"
                     else -> "Неизвестно"
                 }
                 functionState.value = parts[4].trim()
-                accelerometerData.value = parts[5].trim()
+
+                // Обрабатываем данные акселерометра
+                val accelerometerValue = parts[5].trim().toFloatOrNull() ?: 0.0f
+
+                // Классифицируем тряску с добавлением значения
+                val shakeCategory = when {
+                    accelerometerValue > 2.5 || accelerometerValue < -2.5 -> "Экстремальная тряска (${accelerometerValue})"
+                    accelerometerValue > 1.0 || accelerometerValue < -1.0 -> "Сильная тряска (${accelerometerValue})"
+                    accelerometerValue > 0.5 || accelerometerValue < -0.5 -> "Слабая тряска (${accelerometerValue})"
+                    else -> "В покое (${accelerometerValue})"
+                }
+
+                // Сохраняем данные в LiveData
+                accelerometerData.value = shakeCategory
             } else {
                 Toast.makeText(
                     this,
@@ -225,6 +239,7 @@ class MainActivity : ComponentActivity() {
             ).show()
         }
     }
+
 
     private fun sendCommandToDevice(command: String) {
         bluetoothHelper.sendCommand(command)
@@ -297,7 +312,7 @@ fun BluetoothScreen(
     hallState: String,
 //    functionState: String,
     coordinates: String,
-//    acc: String
+    acc: String
 ) {
     Column(
         modifier = modifier
@@ -316,7 +331,7 @@ fun BluetoothScreen(
             hallState = hallState,
 //            functionState = functionState,
             coordinates = coordinates,
-//            acc = acc,
+            acc = acc,
         )
     }
 }
@@ -342,6 +357,7 @@ fun ControlPanelPreview() {
                     temp2 = "19",
                     hallState = "Закрыто",
                     coordinates = "55.751244, 37.618423",
+                    acc = "0.01",
                     modifier = Modifier.padding(innerPadding) // Учитываем отступы от TopBar
                 )
             }
