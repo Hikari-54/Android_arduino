@@ -1,4 +1,4 @@
-package com.example.bluetooth_andr11.ui
+package com.example.bluetooth_andr11.ui.control
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement

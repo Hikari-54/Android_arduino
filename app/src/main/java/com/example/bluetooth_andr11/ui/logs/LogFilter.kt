@@ -1,4 +1,4 @@
-package com.example.bluetooth_andr11.ui
+package com.example.bluetooth_andr11.ui.logs
 
 import android.app.DatePickerDialog
 import android.content.Context

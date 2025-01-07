@@ -20,7 +20,7 @@ import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.LocationManager
 import com.example.bluetooth_andr11.log.LogModule
 import com.example.bluetooth_andr11.permissions.PermissionHelper
-import com.example.bluetooth_andr11.ui.AppTopBar
+import com.example.bluetooth_andr11.ui.control.AppTopBar
 import com.example.bluetooth_andr11.ui.MainScreen
 import com.example.bluetooth_andr11.ui.theme.Bluetooth_andr11Theme
 import com.google.android.gms.location.LocationServices
@@ -302,19 +302,6 @@ class MainActivity : ComponentActivity() {
                     Log.d("SimulateLogs", "Координаты недоступны. Пропуск события: $event")
                 }
             }
-        }
-    }
-
-    private fun simulateArduinoData() {
-        val testData = listOf(
-            "50,24.0,20.5,1,Функция1,0.3",  // Сумка закрыта, слабая тряска
-            "50,24.5,21.0,0,Функция1,-0.2", // Сумка открыта, покой
-            "15,23.0,19.5,1,Функция2,3.0",  // Низкий заряд батареи, экстремальная тряска
-            "30,22.5,18.0,0,Функция2,1.5"   // Сумка открыта, сильная тряска
-        )
-
-        testData.forEach { data ->
-            handleReceivedData(data)
         }
     }
 }
