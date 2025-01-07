@@ -13,10 +13,9 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.Priority
 
 class LocationManager(
-    private val context: Context,
-    private val fusedLocationClient: FusedLocationProviderClient
+    private val context: Context, private val fusedLocationClient: FusedLocationProviderClient
 ) {
-    private val locationCoordinates = mutableStateOf("Неизвестно")
+    val locationCoordinates = mutableStateOf("Неизвестно")
     private var isUpdatingLocation = false
     private var locationCallback: LocationCallback? = null
 
@@ -43,8 +42,7 @@ class LocationManager(
 
     private fun hasLocationPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_FINE_LOCATION
+            context, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
     }
 
@@ -66,8 +64,7 @@ class LocationManager(
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 locationResult.lastLocation?.let { location ->
-                    val coordinates =
-                        "Широта: ${location.latitude}, Долгота: ${location.longitude}"
+                    val coordinates = "Широта: ${location.latitude}, Долгота: ${location.longitude}"
                     locationCoordinates.value = coordinates
                     onLocationUpdated(coordinates)
                 }
@@ -77,13 +74,17 @@ class LocationManager(
         // Регистрируем обновления местоположения
         try {
             fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback!!,
-                Looper.getMainLooper()
+                locationRequest, locationCallback!!, Looper.getMainLooper()
             )
             isUpdatingLocation = true
         } catch (e: SecurityException) {
             println("Location permission is missing or denied: ${e.message}")
         }
     }
+
+    fun getCurrentCoordinates(): String {
+        return locationCoordinates.value
+    }
+
+
 }

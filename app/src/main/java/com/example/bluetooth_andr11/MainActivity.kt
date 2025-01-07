@@ -1,10 +1,12 @@
 package com.example.bluetooth_andr11
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.LocationManager
+import com.example.bluetooth_andr11.log.LogModule
 import com.example.bluetooth_andr11.permissions.PermissionHelper
 import com.example.bluetooth_andr11.ui.AppTopBar
 import com.example.bluetooth_andr11.ui.MainScreen
@@ -23,6 +26,7 @@ import com.example.bluetooth_andr11.ui.theme.Bluetooth_andr11Theme
 import com.google.android.gms.location.LocationServices
 import org.osmdroid.config.Configuration
 import java.io.File
+import kotlinx.coroutines.*
 
 class MainActivity : ComponentActivity() {
 
@@ -75,6 +79,13 @@ class MainActivity : ComponentActivity() {
         } else {
             permissionHelper.requestPermissions()
         }
+
+        // Эмулируем данные от Arduino
+//        simulateArduinoData()
+        simulateDebugLogs(this, locationManager)
+
+
+        LogModule.logEventWithLocation(this, locationManager, "Сумка закрыта")
 
         setContent {
             Bluetooth_andr11Theme {
@@ -216,8 +227,16 @@ class MainActivity : ComponentActivity() {
                 temp1.value = parts[1].trim()
                 temp2.value = parts[2].trim()
                 hallState.value = when (parts[3].trim()) {
-                    "1" -> "Закрыт"
-                    "0" -> "Открыт"
+                    "1" -> {
+                        LogModule.logEventWithLocation(this, locationManager, "Сумка закрыта")
+                        "Закрыт"
+                    }
+
+                    "0" -> {
+                        LogModule.logEventWithLocation(this, locationManager, "Сумка открыта")
+                        "Открыт"
+                    }
+
                     else -> "Неизвестно"
                 }
                 functionState.value = parts[4].trim()
@@ -227,8 +246,24 @@ class MainActivity : ComponentActivity() {
 
                 // Классифицируем тряску с добавлением значения
                 val shakeCategory = when {
-                    accelerometerValue > 2.5 || accelerometerValue < -2.5 -> "Экстремальная тряска (${accelerometerValue})"
-                    accelerometerValue > 1.0 || accelerometerValue < -1.0 -> "Сильная тряска (${accelerometerValue})"
+                    accelerometerValue > 2.5 || accelerometerValue < -2.5 -> {
+                        LogModule.logEventWithLocation(
+                            this,
+                            locationManager,
+                            "Экстремальная тряска (${accelerometerValue})"
+                        )
+                        "Экстремальная тряска (${accelerometerValue})"
+                    }
+
+                    accelerometerValue > 1.0 || accelerometerValue < -1.0 -> {
+                        LogModule.logEventWithLocation(
+                            this,
+                            locationManager,
+                            "Сильная тряска (${accelerometerValue})"
+                        )
+                        "Сильная тряска (${accelerometerValue})"
+                    }
+
                     accelerometerValue > 0.5 || accelerometerValue < -0.5 -> "Слабая тряска (${accelerometerValue})"
                     else -> "В покое (${accelerometerValue})"
                 }
@@ -236,18 +271,50 @@ class MainActivity : ComponentActivity() {
                 // Сохраняем данные в LiveData
                 accelerometerData.value = shakeCategory
             } else {
-                Toast.makeText(
-                    this, "Некорректный формат данных: $data", Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this, "Некорректный формат данных: $data", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(
-                this, "Ошибка парсинга данных: ${e.message}", Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Ошибка парсинга данных: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun sendCommandToDevice(command: String) {
         bluetoothHelper.sendCommand(command)
+    }
+
+
+    fun simulateDebugLogs(context: Context, locationManager: LocationManager) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val events = listOf(
+                "Сумка открыта",
+                "Сумка закрыта",
+                "Низкий заряд батареи",
+                "Экстремальная тряска",
+                "Сильная тряска"
+            )
+
+            for (event in events) {
+                delay(1000) // Задержка 1 секунда между логами
+                val coordinates = locationManager.getCurrentCoordinates()
+                if (coordinates.isNotEmpty()) {
+                    LogModule.logEventWithLocation(context, locationManager, event)
+                } else {
+                    Log.d("SimulateLogs", "Координаты недоступны. Пропуск события: $event")
+                }
+            }
+        }
+    }
+
+    private fun simulateArduinoData() {
+        val testData = listOf(
+            "50,24.0,20.5,1,Функция1,0.3",  // Сумка закрыта, слабая тряска
+            "50,24.5,21.0,0,Функция1,-0.2", // Сумка открыта, покой
+            "15,23.0,19.5,1,Функция2,3.0",  // Низкий заряд батареи, экстремальная тряска
+            "30,22.5,18.0,0,Функция2,1.5"   // Сумка открыта, сильная тряска
+        )
+
+        testData.forEach { data ->
+            handleReceivedData(data)
+        }
     }
 }

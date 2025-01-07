@@ -3,6 +3,7 @@ package com.example.bluetooth_andr11.log
 import android.content.Context
 import android.location.Location
 import android.util.Log
+import com.example.bluetooth_andr11.location.LocationManager
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
@@ -28,6 +29,16 @@ object LogModule {
         return File(logDir, "$fileName.txt")
     }
 
+    // Чтение логов
+    fun readLogs(context: Context): List<String> {
+        val logDir = getLogDirectory(context)
+        val logFiles = logDir.listFiles() ?: return emptyList()
+
+        return logFiles.flatMap { file ->
+            file.readLines()
+        }
+    }
+
     // Логирование местоположения
     fun logLocation(context: Context, location: Location) {
         try {
@@ -51,15 +62,46 @@ object LogModule {
         }
     }
 
-    // Чтение логов
-    fun readLogs(context: Context): List<String> {
-        val logDir = getLogDirectory(context)
-        val logFiles = logDir.listFiles() ?: return emptyList()
+    fun logEventWithLocation(
+        context: Context,
+        locationManager: LocationManager,
+        event: String
+    ) {
+        // Используем метод LocationManager для получения координат
+        val currentCoordinates = locationManager.getCurrentCoordinates()
+        val logMessage = if (currentCoordinates.isEmpty()) {
+            "$event @ Координаты недоступны"
+        } else {
+            "$event @ $currentCoordinates"
+        }
 
-        return logFiles.flatMap { file ->
-            file.readLines()
+        // Записываем событие в лог-файл
+        logEvent(context, logMessage)
+    }
+
+    fun logEvent(context: Context, event: String) {
+        try {
+            // Получаем путь к файлу
+            val logDir = File(context.getExternalFilesDir(null), "logs")
+            if (!logDir.exists()) {
+                logDir.mkdirs() // Создаем папку, если она отсутствует
+            }
+
+            val logFile = File(logDir, "events_log.txt")
+            logFile.appendText("${getCurrentTimestamp()} - $event\n")
+
+            // Логируем успешную запись
+            Log.d("LogModule", "Лог записан: $event")
+        } catch (e: Exception) {
+            Log.e("LogModule", "Ошибка записи лога: ${e.message}")
         }
     }
+
+
+    private fun getCurrentTimestamp(): String {
+        return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    }
+
 
     // Фильтрация логов по дате
     fun filterLogsByDate(context: Context, startDate: String, endDate: String): List<String> {

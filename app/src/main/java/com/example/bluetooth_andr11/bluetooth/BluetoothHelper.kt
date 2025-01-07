@@ -6,7 +6,10 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
@@ -65,8 +68,7 @@ class BluetoothHelper(private val context: Context) {
                 it.name ?: "Unknown"
             } catch (e: SecurityException) {
                 Log.e(
-                    "BluetoothHelper",
-                    "Permission error when accessing device name: ${e.message}"
+                    "BluetoothHelper", "Permission error when accessing device name: ${e.message}"
                 )
                 "Unknown"
             }
@@ -117,8 +119,7 @@ class BluetoothHelper(private val context: Context) {
                 device.name ?: "Unknown"
             } catch (e: SecurityException) {
                 Log.e(
-                    "BluetoothHelper",
-                    "Permission error when accessing device name: ${e.message}"
+                    "BluetoothHelper", "Permission error when accessing device name: ${e.message}"
                 )
                 "Unknown"
             }
@@ -197,13 +198,31 @@ class BluetoothHelper(private val context: Context) {
     private fun hasBluetoothPermission(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val permissions = listOf(
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.BLUETOOTH_SCAN
+                Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN
             )
             return permissions.all {
                 ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
             }
         }
         return true // Permissions are not required for Bluetooth before Android 12
+    }
+
+    fun monitorConnectionStatus(onStatusChange: (Boolean) -> Unit) {
+        bluetoothAdapter?.let { adapter ->
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    when (intent.action) {
+                        BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED -> {
+                            val state =
+                                intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE, -1)
+                            onStatusChange(state == BluetoothAdapter.STATE_CONNECTED)
+                        }
+                    }
+                }
+            }
+
+            val filter = IntentFilter(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
+            context.registerReceiver(receiver, filter)
+        }
     }
 }
