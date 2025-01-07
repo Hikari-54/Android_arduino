@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +37,12 @@ fun MainScreen(
     bluetoothHelper: BluetoothHelper,
     locationManager: LocationManager
 ) {
+    // Используем rememberSaveable для сохранения состояния между переходами
+    val context = LocalContext.current
+    val isHeatOn = rememberSaveable { mutableStateOf(false) }
+    val isCoolOn = rememberSaveable { mutableStateOf(false) }
+    val isLightOn = rememberSaveable { mutableStateOf(false) }
+
     BoxWithConstraints(
         modifier = modifier.fillMaxSize()
     ) {
@@ -74,6 +82,9 @@ fun MainScreen(
                     hallState = hallState,
                     coordinates = coordinates,
                     acc = acc,
+                    isHeatOn = isHeatOn,
+                    isCoolOn = isCoolOn,
+                    isLightOn = isLightOn,
                     context = LocalContext.current,
                     bluetoothHelper = bluetoothHelper,
                     locationManager = locationManager

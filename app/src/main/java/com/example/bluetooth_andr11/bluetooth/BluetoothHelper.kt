@@ -33,17 +33,13 @@ class BluetoothHelper(private val context: Context) {
     private var bluetoothSocket: BluetoothSocket? = null
     private var inputStream: InputStream? = null
     private var outputStream: OutputStream? = null
-    private var isConnected = false
     private var isListening = false // Prevent duplicate coroutine starts
+    private var isConnected = false
 
     // Check if Bluetooth is enabled
-    fun isBluetoothEnabled(): Boolean {
-        return bluetoothAdapter?.isEnabled ?: false
-    }
+    val isDeviceConnected: Boolean
+        get() = isConnected
 
-    fun isDeviceConnected(): Boolean {
-        return isConnected
-    }
 
     // Get paired devices
     fun getPairedDevices(): Set<BluetoothDevice>? {
@@ -89,7 +85,7 @@ class BluetoothHelper(private val context: Context) {
         builder.show()
     }
 
-    // Connect to a Bluetooth device
+    // Подключение к Bluetooth-устройству
     fun connectToDevice(device: BluetoothDevice, onConnectionResult: (Boolean, String) -> Unit) {
         if (!hasBluetoothPermission()) {
             onConnectionResult(false, "Bluetooth permissions are missing")
@@ -104,39 +100,35 @@ class BluetoothHelper(private val context: Context) {
             return
         }
 
-        try {
-            bluetoothSocket = try {
-                device.createRfcommSocketToServiceRecord(uuid)
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                bluetoothSocket = device.createRfcommSocketToServiceRecord(uuid)
+                bluetoothSocket?.connect()
+
+                inputStream = bluetoothSocket?.inputStream
+                outputStream = bluetoothSocket?.outputStream
+                isConnected = true
+
+                val deviceName = device.name ?: "Unknown"
+
+                withContext(Dispatchers.Main) {
+                    onConnectionResult(true, "Connected to $deviceName")
+                }
             } catch (e: SecurityException) {
-                Log.e("BluetoothHelper", "Permission error when creating socket: ${e.message}")
-                onConnectionResult(false, "Permission error when creating socket")
-                return
+                Log.e("BluetoothHelper", "Permission error when connecting: ${e.message}")
+                isConnected = false
+                withContext(Dispatchers.Main) {
+                    onConnectionResult(false, "Permission error when connecting")
+                }
+                closeConnection()
+            } catch (e: IOException) {
+                Log.e("BluetoothHelper", "Connection error: ${e.message}")
+                isConnected = false
+                withContext(Dispatchers.Main) {
+                    onConnectionResult(false, "Connection error: ${e.message}")
+                }
+                closeConnection()
             }
-
-            bluetoothSocket?.connect()
-
-            inputStream = bluetoothSocket?.inputStream
-            outputStream = bluetoothSocket?.outputStream
-            isConnected = true
-
-            val deviceName = try {
-                device.name ?: "Unknown"
-            } catch (e: SecurityException) {
-                Log.e(
-                    "BluetoothHelper", "Permission error when accessing device name: ${e.message}"
-                )
-                "Unknown"
-            }
-
-            onConnectionResult(true, "Connected to $deviceName")
-        } catch (e: SecurityException) {
-            Log.e("BluetoothHelper", "Permission error when connecting: ${e.message}")
-            onConnectionResult(false, "Permission error when connecting")
-            closeConnection()
-        } catch (e: IOException) {
-            Log.e("BluetoothHelper", "Connection error: ${e.message}")
-            onConnectionResult(false, "Connection error: ${e.message}")
-            closeConnection()
         }
     }
 

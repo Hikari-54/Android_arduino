@@ -69,7 +69,7 @@ object LogModule {
         locationManager: LocationManager,
         event: String
     ) {
-        if (!bluetoothHelper.isDeviceConnected()) {
+        if (bluetoothHelper.isDeviceConnected) {
             Log.d("LogModule", "Логи не записываются: устройство не подключено")
             return
         }
