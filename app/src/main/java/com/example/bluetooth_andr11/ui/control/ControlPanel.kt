@@ -1,5 +1,6 @@
 package com.example.bluetooth_andr11.ui.control
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,12 +23,23 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluetooth_andr11.R
+import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
+import com.example.bluetooth_andr11.location.LocationManager
+import com.example.bluetooth_andr11.log.LogModule
 
 @Composable
 fun ControlPanel(
-    onCommandSend: (String) -> Unit, temp1: String, temp2: String, hallState: String,
+    onCommandSend: (String) -> Unit,
+    temp1: String,
+    temp2: String,
+    hallState: String,
 //    functionState: String,
-    coordinates: String, acc: String, modifier: Modifier = Modifier
+    coordinates: String,
+    acc: String,
+    context: Context,
+    modifier: Modifier = Modifier,
+    bluetoothHelper: BluetoothHelper,
+    locationManager: LocationManager
 ) {
     // Состояния кнопок
     var isHeatOn by remember { mutableStateOf(false) }
@@ -78,6 +90,12 @@ fun ControlPanel(
                     onClick = {
                         isHeatOn = !isHeatOn
                         onCommandSend(if (isHeatOn) "H" else "h")
+                        LogModule.logEventWithLocation(
+                            context,
+                            event = "Нагрев ${if (isHeatOn) "включен" else "выключен"}",
+                            bluetoothHelper = bluetoothHelper,
+                            locationManager = locationManager,
+                        )
                     }, colors = ButtonDefaults.buttonColors(
                         containerColor = if (isHeatOn) Color(
                             0xFFFF4500
@@ -99,6 +117,12 @@ fun ControlPanel(
                     onClick = {
                         isCoolOn = !isCoolOn
                         onCommandSend(if (isCoolOn) "C" else "c")
+                        LogModule.logEventWithLocation(
+                            context,
+                            event = "Холод ${if (isCoolOn) "включен" else "выключен"}",
+                            bluetoothHelper = bluetoothHelper,
+                            locationManager = locationManager,
+                        )
                     }, colors = ButtonDefaults.buttonColors(
                         containerColor = if (isCoolOn) Color(
                             0xFF1E90FF
@@ -120,6 +144,12 @@ fun ControlPanel(
                     onClick = {
                         isLightOn = !isLightOn
                         onCommandSend(if (isLightOn) "L" else "l")
+                        LogModule.logEventWithLocation(
+                            context = context,
+                            bluetoothHelper = bluetoothHelper,
+                            locationManager = locationManager,
+                            event = "Свет ${if (isLightOn) "включен" else "выключен"}"
+                        )
                     }, colors = ButtonDefaults.buttonColors(
                         containerColor = if (isLightOn) Color(0xFFF0F000) else Color.Gray
                     ), modifier = Modifier.padding(4.dp)

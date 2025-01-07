@@ -111,14 +111,18 @@ class MainActivity : ComponentActivity() {
 //                        modifier = Modifier.padding(innerPadding)
                     ) {
                         composable("main_screen") {
-                            MainScreen(modifier = Modifier.padding(innerPadding),
+                            MainScreen(
+                                modifier = Modifier.padding(innerPadding),
                                 onCommandSend = ::sendCommandToDevice,
                                 temp1 = temp1.value,
                                 temp2 = temp2.value,
                                 hallState = hallState.value,
                                 coordinates = coordinates.value,
                                 acc = accelerometerData.value,
-                                onNavigateToLogs = { navController.navigate("log_screen") })
+                                onNavigateToLogs = { navController.navigate("log_screen") },
+                                bluetoothHelper = bluetoothHelper,
+                                locationManager = locationManager,
+                            )
                         }
 
                         composable("log_screen") {
@@ -267,20 +271,14 @@ class MainActivity : ComponentActivity() {
                 hallState.value = when (parts[3].trim()) {
                     "1" -> {
                         LogModule.logEventWithLocation(
-                            this,
-                            bluetoothHelper,
-                            locationManager,
-                            "Сумка закрыта"
+                            this, bluetoothHelper, locationManager, "Сумка закрыта"
                         )
                         "Закрыт"
                     }
 
                     "0" -> {
                         LogModule.logEventWithLocation(
-                            this,
-                            bluetoothHelper,
-                            locationManager,
-                            "Сумка открыта"
+                            this, bluetoothHelper, locationManager, "Сумка открыта"
                         )
                         "Открыт"
                     }

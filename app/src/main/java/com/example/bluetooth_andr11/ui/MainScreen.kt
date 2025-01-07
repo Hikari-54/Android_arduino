@@ -14,7 +14,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
+import com.example.bluetooth_andr11.location.LocationManager
 import com.example.bluetooth_andr11.ui.control.ControlPanel
 
 
@@ -28,7 +31,9 @@ fun MainScreen(
 //    functionState: String,
     coordinates: String,
     acc: String,
-    onNavigateToLogs: () -> Unit
+    onNavigateToLogs: () -> Unit,
+    bluetoothHelper: BluetoothHelper,
+    locationManager: LocationManager
 ) {
     BoxWithConstraints(
         modifier = modifier.fillMaxSize()
@@ -68,7 +73,10 @@ fun MainScreen(
                     temp2 = temp2,
                     hallState = hallState,
                     coordinates = coordinates,
-                    acc = acc
+                    acc = acc,
+                    context = LocalContext.current,
+                    bluetoothHelper = bluetoothHelper,
+                    locationManager = locationManager
                 )
             }
 
