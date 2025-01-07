@@ -30,7 +30,7 @@ import com.example.bluetooth_andr11.R
 import com.example.bluetooth_andr11.map.MapModule
 
 @Composable
-fun MapScreen(modifier: Modifier = Modifier) {
+fun Map(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val mapView = remember { MapModule.initializeMap(context) }
 

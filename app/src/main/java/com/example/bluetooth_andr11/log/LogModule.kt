@@ -63,9 +63,7 @@ object LogModule {
     }
 
     fun logEventWithLocation(
-        context: Context,
-        locationManager: LocationManager,
-        event: String
+        context: Context, locationManager: LocationManager, event: String
     ) {
         // Используем метод LocationManager для получения координат
         val currentCoordinates = locationManager.getCurrentCoordinates()

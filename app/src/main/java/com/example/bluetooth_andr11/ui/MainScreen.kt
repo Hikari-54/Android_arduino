@@ -1,6 +1,5 @@
 package com.example.bluetooth_andr11.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -10,13 +9,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.bluetooth_andr11.ui.control.ControlPanel
-import com.example.bluetooth_andr11.ui.logs.LogFilterScreen
 
 
 @Composable
@@ -28,7 +27,8 @@ fun MainScreen(
     hallState: String,
 //    functionState: String,
     coordinates: String,
-    acc: String
+    acc: String,
+    onNavigateToLogs: () -> Unit
 ) {
     BoxWithConstraints(
         modifier = modifier.fillMaxSize()
@@ -52,7 +52,7 @@ fun MainScreen(
                         .fillMaxWidth()
                         .height(mapHeight)
                 ) {
-                    MapScreen(modifier = Modifier.fillMaxSize())
+                    Map(modifier = Modifier.fillMaxSize())
                 }
             }
 
@@ -76,13 +76,10 @@ fun MainScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Фильтр логов
+            // Кнопка перехода на экран логов
             item {
-                val context = LocalContext.current
-                LogFilterScreen { startDate, endDate ->
-                    Toast.makeText(
-                        context, "Фильтр: с $startDate по $endDate", Toast.LENGTH_SHORT
-                    ).show()
+                Button(onClick = onNavigateToLogs) {
+                    Text(text = "Показать логи")
                 }
             }
         }

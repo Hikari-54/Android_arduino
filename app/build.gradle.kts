@@ -22,8 +22,7 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             )
         }
         debug {
@@ -43,33 +42,38 @@ android {
 }
 
 dependencies {
-// Основные зависимости
+    // Core dependencies
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.navigation.compose)
+
+    // Compose UI
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.material)
     implementation(libs.androidx.material3)
 
-    // Работа с картами
+    // Maps and location
     implementation(libs.osmdroid.android)
+    implementation(libs.play.services.location)
 
-    // Логи и сети
+    // Network and logging
     implementation(libs.okhttp)
     implementation(libs.logging.interceptor)
 
-    // Google Play Services
-    implementation(libs.play.services.location)
+    // UI components
     implementation(libs.androidx.constraintlayout)
-    implementation(libs.androidx.constraintlayout.compose.android)
+    implementation(libs.androidx.constraintlayout.compose)
+    implementation(libs.androidx.foundation)
 
-    // Тестирование
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
 
-    // Инструменты для отладки
+    // Debugging tools
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

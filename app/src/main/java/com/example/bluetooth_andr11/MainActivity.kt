@@ -16,17 +16,21 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.LocationManager
 import com.example.bluetooth_andr11.log.LogModule
 import com.example.bluetooth_andr11.permissions.PermissionHelper
-import com.example.bluetooth_andr11.ui.control.AppTopBar
+import com.example.bluetooth_andr11.ui.LogScreen
 import com.example.bluetooth_andr11.ui.MainScreen
+import com.example.bluetooth_andr11.ui.control.AppTopBar
 import com.example.bluetooth_andr11.ui.theme.Bluetooth_andr11Theme
 import com.google.android.gms.location.LocationServices
+import kotlinx.coroutines.*
 import org.osmdroid.config.Configuration
 import java.io.File
-import kotlinx.coroutines.*
 
 class MainActivity : ComponentActivity() {
 
@@ -81,14 +85,13 @@ class MainActivity : ComponentActivity() {
         }
 
         // Эмулируем данные от Arduino
-//        simulateArduinoData()
         simulateDebugLogs(this, locationManager)
-
-
         LogModule.logEventWithLocation(this, locationManager, "Сумка закрыта")
 
         setContent {
             Bluetooth_andr11Theme {
+                val navController = rememberNavController()
+
                 Scaffold(topBar = {
                     AppTopBar(
                         batteryLevel = batteryPercent.value,
@@ -97,18 +100,50 @@ class MainActivity : ComponentActivity() {
                         onPermissionsClick = ::handlePermissionsIconClick,
                         onBluetoothClick = ::handleConnectToDevice
                     )
-                }, content = { innerPadding ->
-                    MainScreen(
-                        modifier = Modifier.padding(innerPadding),
-                        onCommandSend = ::sendCommandToDevice,
-                        temp1 = temp1.value,
-                        temp2 = temp2.value,
-                        hallState = hallState.value,
-//                            functionState = functionState.value,
-                        coordinates = coordinates.value,
-                        acc = accelerometerData.value
-                    )
-                })
+                }) { innerPadding ->
+                    // Навигация между экранами
+                    NavHost(
+                        navController = navController,
+                        startDestination = "main_screen",
+//                        modifier = Modifier.padding(innerPadding)
+                    ) {
+                        composable("main_screen") {
+                            MainScreen(modifier = Modifier.padding(innerPadding),
+                                onCommandSend = ::sendCommandToDevice,
+                                temp1 = temp1.value,
+                                temp2 = temp2.value,
+                                hallState = hallState.value,
+                                coordinates = coordinates.value,
+                                acc = accelerometerData.value,
+                                onNavigateToLogs = { navController.navigate("log_screen") })
+                        }
+
+                        composable("log_screen") {
+                            LogScreen(navController = navController)
+                        }
+                    }
+                }
+
+//                Scaffold(topBar = {
+//                    AppTopBar(
+//                        batteryLevel = batteryPercent.value,
+//                        isBluetoothConnected = isBluetoothConnected.value,
+//                        allPermissionsGranted = allPermissionsGranted.value,
+//                        onPermissionsClick = ::handlePermissionsIconClick,
+//                        onBluetoothClick = ::handleConnectToDevice
+//                    )
+//                }, content = { innerPadding ->
+//                    MainScreen(
+//                        modifier = Modifier.padding(innerPadding),
+//                        onCommandSend = ::sendCommandToDevice,
+//                        temp1 = temp1.value,
+//                        temp2 = temp2.value,
+//                        hallState = hallState.value,
+////                            functionState = functionState.value,
+//                        coordinates = coordinates.value,
+//                        acc = accelerometerData.value,
+//                    )
+//                })
             }
         }
     }
@@ -248,18 +283,14 @@ class MainActivity : ComponentActivity() {
                 val shakeCategory = when {
                     accelerometerValue > 2.5 || accelerometerValue < -2.5 -> {
                         LogModule.logEventWithLocation(
-                            this,
-                            locationManager,
-                            "Экстремальная тряска (${accelerometerValue})"
+                            this, locationManager, "Экстремальная тряска (${accelerometerValue})"
                         )
                         "Экстремальная тряска (${accelerometerValue})"
                     }
 
                     accelerometerValue > 1.0 || accelerometerValue < -1.0 -> {
                         LogModule.logEventWithLocation(
-                            this,
-                            locationManager,
-                            "Сильная тряска (${accelerometerValue})"
+                            this, locationManager, "Сильная тряска (${accelerometerValue})"
                         )
                         "Сильная тряска (${accelerometerValue})"
                     }
