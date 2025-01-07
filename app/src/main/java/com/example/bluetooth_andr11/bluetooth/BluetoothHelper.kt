@@ -41,6 +41,10 @@ class BluetoothHelper(private val context: Context) {
         return bluetoothAdapter?.isEnabled ?: false
     }
 
+    fun isDeviceConnected(): Boolean {
+        return isConnected
+    }
+
     // Get paired devices
     fun getPairedDevices(): Set<BluetoothDevice>? {
         if (!hasBluetoothPermission()) {

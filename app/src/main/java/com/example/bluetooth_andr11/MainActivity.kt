@@ -28,7 +28,10 @@ import com.example.bluetooth_andr11.ui.MainScreen
 import com.example.bluetooth_andr11.ui.control.AppTopBar
 import com.example.bluetooth_andr11.ui.theme.Bluetooth_andr11Theme
 import com.google.android.gms.location.LocationServices
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import java.io.File
 
@@ -86,7 +89,7 @@ class MainActivity : ComponentActivity() {
 
         // Эмулируем данные от Arduino
         simulateDebugLogs(this, locationManager)
-        LogModule.logEventWithLocation(this, locationManager, "Сумка закрыта")
+        LogModule.logEventWithLocation(this, bluetoothHelper, locationManager, "Сумка закрыта")
 
         setContent {
             Bluetooth_andr11Theme {
@@ -263,12 +266,22 @@ class MainActivity : ComponentActivity() {
                 temp2.value = parts[2].trim()
                 hallState.value = when (parts[3].trim()) {
                     "1" -> {
-                        LogModule.logEventWithLocation(this, locationManager, "Сумка закрыта")
+                        LogModule.logEventWithLocation(
+                            this,
+                            bluetoothHelper,
+                            locationManager,
+                            "Сумка закрыта"
+                        )
                         "Закрыт"
                     }
 
                     "0" -> {
-                        LogModule.logEventWithLocation(this, locationManager, "Сумка открыта")
+                        LogModule.logEventWithLocation(
+                            this,
+                            bluetoothHelper,
+                            locationManager,
+                            "Сумка открыта"
+                        )
                         "Открыт"
                     }
 
@@ -283,14 +296,20 @@ class MainActivity : ComponentActivity() {
                 val shakeCategory = when {
                     accelerometerValue > 2.5 || accelerometerValue < -2.5 -> {
                         LogModule.logEventWithLocation(
-                            this, locationManager, "Экстремальная тряска (${accelerometerValue})"
+                            this,
+                            bluetoothHelper,
+                            locationManager,
+                            "Экстремальная тряска (${accelerometerValue})"
                         )
                         "Экстремальная тряска (${accelerometerValue})"
                     }
 
                     accelerometerValue > 1.0 || accelerometerValue < -1.0 -> {
                         LogModule.logEventWithLocation(
-                            this, locationManager, "Сильная тряска (${accelerometerValue})"
+                            this,
+                            bluetoothHelper,
+                            locationManager,
+                            "Сильная тряска (${accelerometerValue})"
                         )
                         "Сильная тряска (${accelerometerValue})"
                     }
@@ -328,7 +347,7 @@ class MainActivity : ComponentActivity() {
                 delay(1000) // Задержка 1 секунда между логами
                 val coordinates = locationManager.getCurrentCoordinates()
                 if (coordinates.isNotEmpty()) {
-                    LogModule.logEventWithLocation(context, locationManager, event)
+                    LogModule.logEventWithLocation(context, bluetoothHelper, locationManager, event)
                 } else {
                     Log.d("SimulateLogs", "Координаты недоступны. Пропуск события: $event")
                 }

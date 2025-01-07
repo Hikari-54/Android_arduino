@@ -3,6 +3,7 @@ package com.example.bluetooth_andr11.log
 import android.content.Context
 import android.location.Location
 import android.util.Log
+import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.LocationManager
 import java.io.BufferedWriter
 import java.io.File
@@ -63,8 +64,16 @@ object LogModule {
     }
 
     fun logEventWithLocation(
-        context: Context, locationManager: LocationManager, event: String
+        context: Context,
+        bluetoothHelper: BluetoothHelper,
+        locationManager: LocationManager,
+        event: String
     ) {
+        if (!bluetoothHelper.isDeviceConnected()) {
+            Log.d("LogModule", "Логи не записываются: устройство не подключено")
+            return
+        }
+
         // Используем метод LocationManager для получения координат
         val currentCoordinates = locationManager.getCurrentCoordinates()
         val logMessage = if (currentCoordinates.isEmpty()) {
