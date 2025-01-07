@@ -57,7 +57,7 @@ fun MainScreen(
                         .fillMaxWidth()
                         .height(mapHeight)
                 ) {
-                    Map(modifier = Modifier.fillMaxSize())
+                    MapScreen(modifier = Modifier.fillMaxSize())
                 }
             }
 

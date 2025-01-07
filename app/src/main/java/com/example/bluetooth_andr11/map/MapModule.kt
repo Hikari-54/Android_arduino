@@ -21,6 +21,7 @@ import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 object MapModule {
 
     private var myLocationOverlay: MyLocationNewOverlay? = null
+    private var locationCallback: LocationCallback? = null
 
     fun initializeMap(context: Context): MapView {
         return MapView(context).apply {
@@ -31,122 +32,111 @@ object MapModule {
         }
     }
 
+    // Удаление всех маршрутов, кроме оверлея пользователя
     fun clearRoute(mapView: MapView) {
-        // Оставляем на карте только оверлеи с иконкой текущего местоположения
-        val locationOverlay =
-            mapView.overlays.filterIsInstance<MyLocationNewOverlay>().firstOrNull()
-
-        // Очищаем только маршрут
+        val locationOverlay = mapView.overlays.filterIsInstance<MyLocationNewOverlay>().firstOrNull()
         mapView.overlayManager.clear()
-
-        // Возвращаем оверлей с иконкой текущего местоположения
         locationOverlay?.let { mapView.overlays.add(it) }
-
-        // Обновляем карту
         mapView.invalidate()
     }
 
-    fun enableAlwaysVisibleLocationOverlay(context: Context, mapView: MapView) {
-        var lastBearing = 0f // Переменная для хранения последнего азимута
+    fun initializeLocationOverlay(context: Context, mapView: MapView) {
+        var lastBearing = 0f
 
-        if (myLocationOverlay == null) {
-            val locationProvider = GpsMyLocationProvider(context)
-            myLocationOverlay = object : MyLocationNewOverlay(locationProvider, mapView) {
-                override fun drawMyLocation(
-                    canvas: android.graphics.Canvas?,
-                    pj: org.osmdroid.views.Projection?,
-                    lastFix: Location?
-                ) {
-                    lastFix?.let { location ->
-                        val geoPoint = GeoPoint(location.latitude, location.longitude)
-                        val screenCoords = android.graphics.Point()
-                        pj?.toPixels(geoPoint, screenCoords)
+        // Удаляем предыдущий оверлей, чтобы избежать дублирования
+        myLocationOverlay?.let {
+            mapView.overlays.remove(it)
+            it.disableMyLocation()
+        }
 
-                        // Проверяем, изменился ли азимут
-                        val direction = if (location.hasBearing()) {
-                            location.bearing
-                        } else {
-                            lastBearing // Если азимут не изменился, используем последний
-                        }
-                        lastBearing = direction // Обновляем последний азимут
+        val locationProvider = GpsMyLocationProvider(context)
+        myLocationOverlay = object : MyLocationNewOverlay(locationProvider, mapView) {
+            override fun drawMyLocation(
+                canvas: android.graphics.Canvas?,
+                pj: org.osmdroid.views.Projection?,
+                lastFix: Location?
+            ) {
+                lastFix?.let { location ->
+                    val geoPoint = GeoPoint(location.latitude, location.longitude)
+                    val screenCoords = android.graphics.Point()
+                    pj?.toPixels(geoPoint, screenCoords)
 
-                        // Рисуем треугольную иконку
-                        val path = android.graphics.Path().apply {
-                            moveTo(
-                                screenCoords.x.toFloat(), screenCoords.y.toFloat() - 40
-                            ) // Вершина
-                            lineTo(
-                                screenCoords.x.toFloat() - 30, screenCoords.y.toFloat() + 30
-                            ) // Лево
-                            lineTo(
-                                screenCoords.x.toFloat() + 30, screenCoords.y.toFloat() + 30
-                            ) // Право
-                            close()
-                        }
+                    val direction = if (location.hasBearing()) location.bearing else lastBearing
+                    lastBearing = direction
 
-                        // Настраиваем краску для треугольника
-                        val paint = android.graphics.Paint().apply {
-                            color = Color.parseColor("#2E8B57") // Зелёный цвет
-                            style = android.graphics.Paint.Style.FILL
-                            isAntiAlias = true
-                        }
-
-                        // Поворачиваем холст в направлении устройства
-                        canvas?.save()
-                        canvas?.rotate(
-                            direction, screenCoords.x.toFloat(), screenCoords.y.toFloat()
-                        )
-
-                        // Рисуем треугольник
-                        canvas?.drawPath(path, paint)
-
-                        // Восстанавливаем холст
-                        canvas?.restore()
+                    val path = android.graphics.Path().apply {
+                        moveTo(screenCoords.x.toFloat(), screenCoords.y.toFloat() - 40)
+                        lineTo(screenCoords.x.toFloat() - 30, screenCoords.y.toFloat() + 30)
+                        lineTo(screenCoords.x.toFloat() + 30, screenCoords.y.toFloat() + 30)
+                        close()
                     }
+
+                    val paint = android.graphics.Paint().apply {
+                        color = Color.parseColor("#2E8B57")
+                        style = android.graphics.Paint.Style.FILL
+                        isAntiAlias = true
+                    }
+
+                    canvas?.save()
+                    canvas?.rotate(direction, screenCoords.x.toFloat(), screenCoords.y.toFloat())
+                    canvas?.drawPath(path, paint)
+                    canvas?.restore()
+                }
+            }
+        }
+
+        myLocationOverlay?.apply {
+            enableMyLocation()
+            enableFollowLocation()
+        }
+
+        mapView.overlays.add(myLocationOverlay)
+        setupLocationUpdates(context)
+    }
+
+    // Настройка обновлений местоположения
+    private fun setupLocationUpdates(context: Context) {
+        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            15000L
+        ).apply {
+            setMinUpdateIntervalMillis(5000L)
+        }.build()
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                for (location in locationResult.locations) {
+                    LogModule.logLocation(context, location)
                 }
             }
 
-            myLocationOverlay?.enableMyLocation()
-            myLocationOverlay?.enableFollowLocation()
-            mapView.overlays.add(myLocationOverlay)
-
-            // Добавляем слушатель для логирования перемещений
-            val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
-
-            val locationRequest = LocationRequest.Builder(
-                Priority.PRIORITY_HIGH_ACCURACY, // Приоритет высокой точности
-                15000L // Интервал обновления в миллисекундах
-            ).apply {
-                setMinUpdateIntervalMillis(5000L) // Минимальный интервал обновления
-            }.build()
-
-
-            val locationCallback = object : LocationCallback() {
-                override fun onLocationResult(locationResult: LocationResult) {
-                    for (location in locationResult.locations) {
-                        LogModule.logLocation(context, location)
-                    }
-                }
-
-                override fun onLocationAvailability(locationAvailability: LocationAvailability) {
-                    if (!locationAvailability.isLocationAvailable) {
-                        Log.d("LocationListener", "Местоположение недоступно")
-                    }
+            override fun onLocationAvailability(locationAvailability: LocationAvailability) {
+                if (!locationAvailability.isLocationAvailable) {
+                    Log.d("LocationListener", "Местоположение недоступно")
                 }
             }
+        }
 
-            try {
-                fusedLocationClient.requestLocationUpdates(
-                    locationRequest, locationCallback, Looper.getMainLooper()
-                )
-            } catch (e: SecurityException) {
-                Toast.makeText(
-                    context, "Нет разрешения на доступ к местоположению", Toast.LENGTH_LONG
-                ).show()
-            }
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback!!,
+                Looper.getMainLooper()
+            )
+        } catch (e: SecurityException) {
+            Toast.makeText(context, "Нет разрешения на доступ к местоположению", Toast.LENGTH_LONG).show()
         }
     }
 
+    // Отключение обновлений местоположения
+    fun disableLocationUpdates(context: Context) {
+        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+        locationCallback?.let {
+            fusedLocationClient.removeLocationUpdates(it)
+        }
+        myLocationOverlay = null
+    }
 
     fun enableFollowLocationOverlay(mapView: MapView) {
         val myLocationOverlay =

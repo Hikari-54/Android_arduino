@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,7 +31,7 @@ import com.example.bluetooth_andr11.R
 import com.example.bluetooth_andr11.map.MapModule
 
 @Composable
-fun Map(modifier: Modifier = Modifier) {
+fun MapScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val mapView = remember { MapModule.initializeMap(context) }
 
@@ -39,7 +40,13 @@ fun Map(modifier: Modifier = Modifier) {
 
     // Иконка пользователя всегда видима
     LaunchedEffect(mapView) {
-        MapModule.enableAlwaysVisibleLocationOverlay(context, mapView)
+        MapModule.initializeLocationOverlay(context, mapView)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            MapModule.disableLocationUpdates(context)
+        }
     }
 
     Column(
