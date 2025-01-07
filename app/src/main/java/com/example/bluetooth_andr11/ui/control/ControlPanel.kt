@@ -24,7 +24,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluetooth_andr11.R
-import com.example.bluetooth_andr11.log.LogFilterScreen
+import com.example.bluetooth_andr11.ui.LogFilterScreen
 
 @Composable
 fun ControlPanel(
@@ -135,16 +135,6 @@ fun ControlPanel(
                 }
                 Text(text = "Свет", modifier = Modifier.padding(top = 4.dp))
             }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Фильтр логов
-        val context = LocalContext.current
-        LogFilterScreen { startDate, endDate ->
-            Toast.makeText(
-                context, "Фильтр: с $startDate по $endDate", Toast.LENGTH_SHORT
-            ).show()
         }
     }
 }

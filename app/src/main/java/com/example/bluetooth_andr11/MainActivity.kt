@@ -2,33 +2,27 @@ package com.example.bluetooth_andr11
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.LocationManager
 import com.example.bluetooth_andr11.permissions.PermissionHelper
 import com.example.bluetooth_andr11.ui.AppTopBar
-import com.example.bluetooth_andr11.ui.control.ControlPanel
+import com.example.bluetooth_andr11.ui.MainScreen
 import com.example.bluetooth_andr11.ui.theme.Bluetooth_andr11Theme
 import com.google.android.gms.location.LocationServices
+import org.osmdroid.config.Configuration
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
@@ -64,6 +58,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Настройка кэша для карт
+        setupCachePath()
+
         bluetoothHelper = BluetoothHelper(this)
         permissionHelper = PermissionHelper(this, requestPermissionsLauncher)
         locationManager = LocationManager(
@@ -81,29 +78,26 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             Bluetooth_andr11Theme {
-                Scaffold(
-                    topBar = {
-                        AppTopBar(
-                            batteryLevel = batteryPercent.value,
-                            isBluetoothConnected = isBluetoothConnected.value,
-                            allPermissionsGranted = allPermissionsGranted.value,
-                            onPermissionsClick = ::handlePermissionsIconClick,
-                            onBluetoothClick = ::handleConnectToDevice
-                        )
-                    },
-                    content = { innerPadding ->
-                        BluetoothScreen(
-                            modifier = Modifier.padding(innerPadding),
-                            onCommandSend = ::sendCommandToDevice,
-                            temp1 = temp1.value,
-                            temp2 = temp2.value,
-                            hallState = hallState.value,
+                Scaffold(topBar = {
+                    AppTopBar(
+                        batteryLevel = batteryPercent.value,
+                        isBluetoothConnected = isBluetoothConnected.value,
+                        allPermissionsGranted = allPermissionsGranted.value,
+                        onPermissionsClick = ::handlePermissionsIconClick,
+                        onBluetoothClick = ::handleConnectToDevice
+                    )
+                }, content = { innerPadding ->
+                    MainScreen(
+                        modifier = Modifier.padding(innerPadding),
+                        onCommandSend = ::sendCommandToDevice,
+                        temp1 = temp1.value,
+                        temp2 = temp2.value,
+                        hallState = hallState.value,
 //                            functionState = functionState.value,
-                            coordinates = coordinates.value,
-                            acc = accelerometerData.value
-                        )
-                    }
-                )
+                        coordinates = coordinates.value,
+                        acc = accelerometerData.value
+                    )
+                })
             }
         }
     }
@@ -115,11 +109,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Настройка кэша карт
+    private fun setupCachePath() {
+        val context = applicationContext
+
+        // Проверяем версию Android и настраиваем путь к кэшу карт
+        val cacheDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            File(context.filesDir, "osmdroid")
+        } else {
+            File(context.getExternalFilesDir(null), "osmdroid")
+        }
+
+        // Настраиваем кэш и пользовательский агент
+        val config = Configuration.getInstance()
+        config.osmdroidBasePath = cacheDir
+        config.osmdroidTileCache = File(cacheDir, "cache")
+        config.userAgentValue = packageName
+    }
+
     private fun handlePermissionsDenial(permissions: Map<String, Boolean>) {
         val permanentlyDeniedPermissions = permissions.filter { permission ->
             !permission.value && !ActivityCompat.shouldShowRequestPermissionRationale(
-                this,
-                permission.key
+                this, permission.key
             )
         }
 
@@ -226,141 +237,17 @@ class MainActivity : ComponentActivity() {
                 accelerometerData.value = shakeCategory
             } else {
                 Toast.makeText(
-                    this,
-                    "Некорректный формат данных: $data",
-                    Toast.LENGTH_SHORT
+                    this, "Некорректный формат данных: $data", Toast.LENGTH_SHORT
                 ).show()
             }
         } catch (e: Exception) {
             Toast.makeText(
-                this,
-                "Ошибка парсинга данных: ${e.message}",
-                Toast.LENGTH_SHORT
+                this, "Ошибка парсинга данных: ${e.message}", Toast.LENGTH_SHORT
             ).show()
         }
     }
 
-
     private fun sendCommandToDevice(command: String) {
         bluetoothHelper.sendCommand(command)
-    }
-
-//    private fun handleRequestPermissions() {
-//        if (!allPermissionsGranted.value) {
-//            permissionHelper.requestPermissions()
-//        } else {
-//            Toast.makeText(this, "Все разрешения уже предоставлены", Toast.LENGTH_SHORT).show()
-//        }
-//    }
-
-//    private fun handleCheckBluetooth() {
-//        if (!bluetoothHelper.isBluetoothEnabled()) {
-//            Toast.makeText(this, "Bluetooth выключен", Toast.LENGTH_SHORT).show()
-//            return
-//        }
-//
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-//            if (!permissionHelper.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
-//                Toast.makeText(this, "Разрешение BLUETOOTH_CONNECT отсутствует", Toast.LENGTH_SHORT)
-//                    .show()
-//                permissionHelper.requestSpecificPermission(Manifest.permission.BLUETOOTH_CONNECT)
-//                return
-//            }
-//        } else {
-//            // Для версий ниже API 31 ничего делать не нужно, так как это разрешение отсутствует
-//            Toast.makeText(
-//                this,
-//                "BLUETOOTH_CONNECT не требуется для этой версии Android",
-//                Toast.LENGTH_SHORT
-//            )
-//                .show()
-//        }
-//
-//
-//        bluetoothHelper.showDeviceSelectionDialog(this) { device ->
-//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-//                ActivityCompat.checkSelfPermission(
-//                    this,
-//                    Manifest.permission.BLUETOOTH_CONNECT
-//                ) != PackageManager.PERMISSION_GRANTED
-//            ) {
-//                // Проверяем разрешение BLUETOOTH_CONNECT
-//                if (!permissionHelper.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
-//                    permissionHelper.requestSpecificPermission(Manifest.permission.BLUETOOTH_CONNECT)
-//                }
-//                Toast.makeText(this, "Разрешение BLUETOOTH_CONNECT отсутствует", Toast.LENGTH_SHORT)
-//                    .show()
-//                return@showDeviceSelectionDialog // Выходим из блока, если разрешение отсутствует
-//            }
-//
-//            // Устройство выбрано, выводим его имя
-//            Toast.makeText(
-//                this,
-//                "Выбрано устройство: ${device.name ?: "Unknown"}",
-//                Toast.LENGTH_SHORT
-//            ).show()
-//        }
-//    }
-}
-
-@Composable
-fun BluetoothScreen(
-    modifier: Modifier = Modifier,
-    onCommandSend: (String) -> Unit,
-    temp1: String,
-    temp2: String,
-    hallState: String,
-//    functionState: String,
-    coordinates: String,
-    acc: String
-) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Панель управления
-        ControlPanel(
-            onCommandSend = onCommandSend,
-            temp1 = temp1,
-            temp2 = temp2,
-            hallState = hallState,
-//            functionState = functionState,
-            coordinates = coordinates,
-            acc = acc,
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ControlPanelPreview() {
-    Bluetooth_andr11Theme {
-        Scaffold(
-            topBar = {
-                AppTopBar(
-                    batteryLevel = 75, // Пример уровня заряда батареи
-                    isBluetoothConnected = true, // Пример состояния подключения Bluetooth
-                    allPermissionsGranted = true, // Пример состояния разрешений
-                    onPermissionsClick = { /* Нажатие на иконку разрешений */ },
-                    onBluetoothClick = { /* Нажатие на иконку Bluetooth */ }
-                )
-            },
-            content = { innerPadding ->
-                ControlPanel(
-                    onCommandSend = { /* Никакой команды, просто для просмотра */ },
-                    temp1 = "22",
-                    temp2 = "19",
-                    hallState = "Закрыто",
-                    coordinates = "55.751244, 37.618423",
-                    acc = "0.01",
-                    modifier = Modifier.padding(innerPadding) // Учитываем отступы от TopBar
-                )
-            }
-        )
     }
 }
