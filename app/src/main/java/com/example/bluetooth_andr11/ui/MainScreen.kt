@@ -31,14 +31,14 @@ fun MainScreen(
     temp2: String,
     hallState: String,
 //    functionState: String,
-    coordinates: String,
+//    coordinates: String,
     acc: String,
     onNavigateToLogs: () -> Unit,
     bluetoothHelper: BluetoothHelper,
     locationManager: LocationManager
 ) {
     // Используем rememberSaveable для сохранения состояния между переходами
-    val context = LocalContext.current
+//    val context = LocalContext.current
     val isHeatOn = rememberSaveable { mutableStateOf(false) }
     val isCoolOn = rememberSaveable { mutableStateOf(false) }
     val isLightOn = rememberSaveable { mutableStateOf(false) }
@@ -80,7 +80,7 @@ fun MainScreen(
                     temp1 = temp1,
                     temp2 = temp2,
                     hallState = hallState,
-                    coordinates = coordinates,
+//                    coordinates = coordinates,
                     acc = acc,
                     isHeatOn = isHeatOn,
                     isCoolOn = isCoolOn,

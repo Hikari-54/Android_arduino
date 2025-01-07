@@ -24,11 +24,11 @@ object LogModule {
     }
 
     // Получаем лог-файл на основе текущей даты
-    private fun getLogFile(context: Context): File {
-        val logDir = getLogDirectory(context)
-        val fileName = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        return File(logDir, "$fileName.txt")
-    }
+//    private fun getLogFile(context: Context): File {
+//        val logDir = getLogDirectory(context)
+//        val fileName = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+//        return File(logDir, "$fileName.txt")
+//    }
 
     // Чтение логов
     fun readLogs(context: Context): List<String> {
@@ -104,24 +104,8 @@ object LogModule {
         }
     }
 
-
     private fun getCurrentTimestamp(): String {
         return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
     }
 
-
-    // Фильтрация логов по дате
-    fun filterLogsByDate(context: Context, startDate: String, endDate: String): List<String> {
-        val logEntries = readLogs(context)
-
-        // Создаем новый форматтер для каждого вызова
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        val start = dateFormat.parse("$startDate 00:00:00")
-        val end = dateFormat.parse("$endDate 23:59:59")
-
-        return logEntries.filter { entry ->
-            val date = dateFormat.parse(entry.substringBefore(","))
-            date in start..end
-        }
-    }
 }

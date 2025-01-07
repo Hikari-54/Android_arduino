@@ -88,8 +88,8 @@ class MainActivity : ComponentActivity() {
         }
 
         // Эмулируем данные от Arduino
-        simulateDebugLogs(this, locationManager)
-        LogModule.logEventWithLocation(this, bluetoothHelper, locationManager, "Сумка закрыта")
+//        simulateDebugLogs(this, locationManager)
+//        LogModule.logEventWithLocation(this, bluetoothHelper, locationManager, "Сумка закрыта")
 
         setContent {
             Bluetooth_andr11Theme {
@@ -117,7 +117,6 @@ class MainActivity : ComponentActivity() {
                                 temp1 = temp1.value,
                                 temp2 = temp2.value,
                                 hallState = hallState.value,
-                                coordinates = coordinates.value,
                                 acc = accelerometerData.value,
                                 onNavigateToLogs = { navController.navigate("log_screen") },
                                 bluetoothHelper = bluetoothHelper,
@@ -130,27 +129,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-
-//                Scaffold(topBar = {
-//                    AppTopBar(
-//                        batteryLevel = batteryPercent.value,
-//                        isBluetoothConnected = isBluetoothConnected.value,
-//                        allPermissionsGranted = allPermissionsGranted.value,
-//                        onPermissionsClick = ::handlePermissionsIconClick,
-//                        onBluetoothClick = ::handleConnectToDevice
-//                    )
-//                }, content = { innerPadding ->
-//                    MainScreen(
-//                        modifier = Modifier.padding(innerPadding),
-//                        onCommandSend = ::sendCommandToDevice,
-//                        temp1 = temp1.value,
-//                        temp2 = temp2.value,
-//                        hallState = hallState.value,
-////                            functionState = functionState.value,
-//                        coordinates = coordinates.value,
-//                        acc = accelerometerData.value,
-//                    )
-//                })
             }
         }
     }
