@@ -74,14 +74,18 @@ class MainActivity : ComponentActivity() {
         // Настройка кэша для карт
         setupCachePath()
 
-        bluetoothHelper = BluetoothHelper(this)
+        permissionHelper = PermissionHelper(this, requestPermissionsLauncher)
+        locationManager = LocationManager(
+            context = this,
+            fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        )
 
+        bluetoothHelper = BluetoothHelper(this)
         // Отслеживаем изменения состояния Bluetooth и подключения устройства
-        bluetoothHelper.monitorBluetoothStatus(this) { isEnabled, isConnected ->
+        bluetoothHelper.monitorBluetoothStatus(this, locationManager) { isEnabled, isConnected ->
             isBluetoothEnabled.value = isEnabled
             isDeviceConnected.value = isConnected
 
-            // Блокируем кнопки управления, если устройство не подключено
             if (isEnabled && !isConnected) {
                 bluetoothHelper.showDeviceSelectionDialog(this) { device ->
                     bluetoothHelper.connectToDevice(device) { success, message ->
@@ -91,13 +95,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-
-
-        permissionHelper = PermissionHelper(this, requestPermissionsLauncher)
-        locationManager = LocationManager(
-            context = this,
-            fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        )
 
         // Проверяем наличие всех необходимых разрешений
         allPermissionsGranted.value = permissionHelper.hasAllPermissions()

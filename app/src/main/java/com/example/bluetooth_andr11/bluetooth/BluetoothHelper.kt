@@ -16,6 +16,8 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
+import com.example.bluetooth_andr11.location.LocationManager
+import com.example.bluetooth_andr11.log.LogModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -285,7 +287,11 @@ class BluetoothHelper(private val context: Context) {
         }
     }
 
-    fun monitorBluetoothStatus(context: Context, onStatusChange: (Boolean, Boolean) -> Unit) {
+    fun monitorBluetoothStatus(
+        context: Context,
+        locationManager: LocationManager,
+        onStatusChange: (Boolean, Boolean) -> Unit
+    ) {
         val filter = IntentFilter().apply {
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
@@ -301,25 +307,38 @@ class BluetoothHelper(private val context: Context) {
                         val isEnabled = state == BluetoothAdapter.STATE_ON
 
                         if (state == BluetoothAdapter.STATE_TURNING_OFF || state == BluetoothAdapter.STATE_OFF) {
-                            disconnectDevice() // Закрываем соединение при выключении Bluetooth
-                            dialogShown = false // Сбрасываем флаг диалога
+                            disconnectDevice()
+                            dialogShown = false
+                            context?.let {
+                                logBluetoothEvent(it, locationManager, "Bluetooth выключен")
+                            }
                         }
 
                         onStatusChange(isEnabled, isConnected)
 
                         if (isEnabled && !isConnected && !dialogShown) {
                             dialogShown = true
-                            showDeviceSelection(context)
+                            showDeviceSelection(context!!)
                         }
                     }
 
                     BluetoothDevice.ACTION_ACL_CONNECTED -> {
                         isConnected = true
+                        logBluetoothEvent(
+                            context!!,
+                            locationManager,
+                            "Bluetooth соединение установлено"
+                        )
                         onStatusChange(true, true)
                     }
 
                     BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                         isConnected = false
+                        logBluetoothEvent(
+                            context!!,
+                            locationManager,
+                            "Bluetooth соединение потеряно"
+                        )
                         onStatusChange(true, false)
 
                         if (isBluetoothEnabled() && !dialogShown) {
@@ -333,6 +352,25 @@ class BluetoothHelper(private val context: Context) {
 
         context.registerReceiver(receiver, filter)
     }
+
+
+    private fun logBluetoothEvent(
+        context: Context,
+        locationManager: LocationManager,
+        event: String
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val coordinates = locationManager.getCurrentCoordinates()
+            val logMessage = if (coordinates.isEmpty()) {
+                "$event @ Координаты недоступны"
+            } else {
+                "$event @ $coordinates"
+            }
+
+            LogModule.logEvent(context, logMessage)
+        }
+    }
+
 
     private fun showDeviceSelection(context: Context?) {
         (context as? ComponentActivity)?.runOnUiThread {
