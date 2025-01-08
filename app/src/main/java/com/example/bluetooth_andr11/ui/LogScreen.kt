@@ -100,7 +100,7 @@ fun LogScreen(navController: NavController) {
                         text = event,
                         modifier = Modifier
                             .weight(2f)
-                            .padding(start = 16.dp),
+                            .padding(start = 2.dp),
                         color = Color.Black
                     )
 
