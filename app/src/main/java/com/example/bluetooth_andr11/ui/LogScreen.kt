@@ -73,8 +73,17 @@ fun LogScreen(navController: NavController) {
 
 @Composable
 fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
-    var startDate by remember { mutableStateOf("") }
-    var endDate by remember { mutableStateOf("") }
+    val calendar = Calendar.getInstance()
+    val today = String.format(
+        Locale.getDefault(),
+        "%04d-%02d-%02d",
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH) + 1,
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    var startDate by remember { mutableStateOf(today) }
+    var endDate by remember { mutableStateOf(today) }
 
     Row(
         modifier = Modifier
@@ -82,7 +91,6 @@ fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
             .padding(8.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // Левая часть с выбором начальной и конечной дат
         Column(
             modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Top
         ) {
@@ -95,7 +103,6 @@ fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
             }
         }
 
-        // Кнопка подтверждения фильтрации
         Button(
             onClick = {
                 if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
@@ -113,21 +120,24 @@ fun DatePickerButton(label: String, date: String, onDateSelected: (String) -> Un
     val context = LocalContext.current
     val calendar = Calendar.getInstance()
 
+    val year = date.substring(0, 4).toIntOrNull() ?: calendar.get(Calendar.YEAR)
+    val month = date.substring(5, 7).toIntOrNull()?.minus(1) ?: calendar.get(Calendar.MONTH)
+    val day = date.substring(8, 10).toIntOrNull() ?: calendar.get(Calendar.DAY_OF_MONTH)
+
     val datePickerDialog = DatePickerDialog(
-        context,
-        { _, year, month, dayOfMonth ->
-            val formattedDate =
-                String.format(Locale.getDefault(), "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+        context, { _, selectedYear, selectedMonth, selectedDayOfMonth ->
+            val formattedDate = String.format(
+                Locale.getDefault(),
+                "%04d-%02d-%02d",
+                selectedYear,
+                selectedMonth + 1,
+                selectedDayOfMonth
+            )
             onDateSelected(formattedDate)
-        },
-        calendar.get(Calendar.YEAR),
-        calendar.get(Calendar.MONTH),
-        calendar.get(Calendar.DAY_OF_MONTH)
+        }, year, month, day
     )
 
     Button(onClick = { datePickerDialog.show() }) {
         Text(text = if (date.isEmpty()) label else "Дата: $date")
     }
 }
-
-
