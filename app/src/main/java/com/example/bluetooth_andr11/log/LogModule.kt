@@ -14,6 +14,8 @@ import java.util.Locale
 
 object LogModule {
 
+    private val lastLoggedEventTime = mutableMapOf<String, Long>()
+
     // Получаем директорию для логов
     private fun getLogDirectory(context: Context): File {
         val logDir = File(context.filesDir, "LocationLogs")
@@ -72,19 +74,23 @@ object LogModule {
         }
     }
 
-    fun logEventWithLocation(
+    fun logEventWithLocationAndLimit(
         context: Context,
         bluetoothHelper: BluetoothHelper,
         locationManager: LocationManager,
-        event: String
+        event: String,
+        timeLimitSeconds: Int = 60,
+        noRepeat: Boolean = false
     ) {
-        // Проверяем, подключено ли устройство по Bluetooth
-        if (!bluetoothHelper.isDeviceConnected) {
-            Log.d("LogModule", "Логи не записываются: устройство не подключено")
-            return
-        }
+        val currentTime = System.currentTimeMillis()
+        val lastTime = lastLoggedEventTime[event] ?: 0
 
-        // Получаем текущие координаты
+        if (!bluetoothHelper.isDeviceConnected) return
+
+        if (!noRepeat && currentTime - lastTime < timeLimitSeconds * 1000) return
+
+        lastLoggedEventTime[event] = currentTime
+
         val currentCoordinates = locationManager.getCurrentCoordinates()
         val logMessage = if (currentCoordinates.isEmpty()) {
             "$event @ Координаты недоступны"
@@ -92,10 +98,44 @@ object LogModule {
             "$event @ $currentCoordinates"
         }
 
-        // Записываем событие в лог-файл
-        logEvent(context, logMessage)
-        Log.d("LogModule", "Событие записано: $logMessage")
+        LogModule.logEvent(context, logMessage)
     }
+
+
+//    fun logEventWithLocation(
+//        context: Context,
+//        bluetoothHelper: BluetoothHelper,
+//        locationManager: LocationManager,
+//        event: String
+//    ) {
+//        val currentTime = System.currentTimeMillis()
+//        val lastTime = lastLoggedEventTime[event] ?: 0
+//
+//        // Проверяем, подключено ли устройство по Bluetooth
+//        if (!bluetoothHelper.isDeviceConnected) {
+//            Log.d("LogModule", "Логи не записываются: устройство не подключено")
+//            return
+//        }
+//
+//        // Ограничиваем частоту логирования одного и того же события раз в минуту
+//        if (currentTime - lastTime < 60_000) {
+//            Log.d("LogModule", "Событие '$event' пропущено, так как интервал меньше минуты")
+//            return
+//        }
+//        lastLoggedEventTime[event] = currentTime
+//
+//        // Получаем текущие координаты
+//        val currentCoordinates = locationManager.getCurrentCoordinates()
+//        val logMessage = if (currentCoordinates.isEmpty()) {
+//            "$event @ Координаты недоступны"
+//        } else {
+//            "$event @ $currentCoordinates"
+//        }
+//
+//        // Записываем событие в лог-файл
+//        logEvent(context, logMessage)
+//        Log.d("LogModule", "Событие записано: $logMessage")
+//    }
 
 
     fun logEvent(context: Context, event: String) {

@@ -16,10 +16,12 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
+import com.example.bluetooth_andr11.MainActivity
 import com.example.bluetooth_andr11.location.LocationManager
 import com.example.bluetooth_andr11.log.LogModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -138,19 +140,17 @@ class BluetoothHelper(private val context: Context) {
         builder.show()
     }
 
-
-    // Подключиться к устройству
     fun connectToDevice(device: BluetoothDevice, onConnectionResult: (Boolean, String) -> Unit) {
         if (!hasBluetoothPermission()) {
             onConnectionResult(false, "Разрешения Bluetooth отсутствуют")
             return
         }
 
-        // Проверяем наличие UUID у устройства
         val uuid = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (ContextCompat.checkSelfPermission(
-                        context, Manifest.permission.BLUETOOTH_CONNECT
+                        context,
+                        Manifest.permission.BLUETOOTH_CONNECT
                     ) == PackageManager.PERMISSION_GRANTED
                 ) {
                     device.uuids?.firstOrNull()?.uuid ?: UUID.randomUUID()
@@ -167,31 +167,9 @@ class BluetoothHelper(private val context: Context) {
             return
         }
 
-        // Запускаем сопряжение в отдельной корутине
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                bluetoothSocket = try {
-                    device.createRfcommSocketToServiceRecord(uuid)
-                } catch (e: SecurityException) {
-                    Log.e("BluetoothHelper", "Ошибка создания сокета: ${e.message}")
-                    withContext(Dispatchers.Main) {
-                        onConnectionResult(false, "Ошибка создания сокета")
-                    }
-                    return@launch
-                }
-
-                // Проверка разрешения перед вызовом connect()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.BLUETOOTH_CONNECT
-                        ) != PackageManager.PERMISSION_GRANTED
-                    ) {
-                        withContext(Dispatchers.Main) {
-                            onConnectionResult(false, "Разрешения BLUETOOTH_CONNECT отсутствуют")
-                        }
-                        return@launch
-                    }
-                }
+                bluetoothSocket = device.createRfcommSocketToServiceRecord(uuid)
 
                 bluetoothSocket?.connect()
 
@@ -201,7 +179,8 @@ class BluetoothHelper(private val context: Context) {
 
                 withContext(Dispatchers.Main) {
                     onConnectionResult(
-                        true, "Подключено к ${device.name ?: "Неизвестное устройство"}"
+                        true,
+                        "Подключено к ${device.name ?: "Неизвестное устройство"}"
                     )
                     listenForDataSafely()
                 }
@@ -216,16 +195,94 @@ class BluetoothHelper(private val context: Context) {
         }
     }
 
-    // Безопасное прослушивание данных с проверкой состояния подключения
-    private fun listenForDataSafely() {
+    fun listenForDataSafely() {
         if (isConnected && inputStream != null) {
             listenForData { data ->
                 Log.d("BluetoothHelper", "Полученные данные: $data")
+                (context as? MainActivity)?.handleReceivedData(data)
             }
         } else {
             Log.e("BluetoothHelper", "Не удалось начать прослушивание, устройство не подключено")
         }
     }
+
+
+    // Подключиться к устройству
+//    fun connectToDevice(device: BluetoothDevice, onConnectionResult: (Boolean, String) -> Unit) {
+//        if (!hasBluetoothPermission()) {
+//            onConnectionResult(false, "Разрешения Bluetooth отсутствуют")
+//            return
+//        }
+//
+//        // Проверяем наличие UUID у устройства
+//        val uuid = try {
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//                if (ContextCompat.checkSelfPermission(
+//                        context, Manifest.permission.BLUETOOTH_CONNECT
+//                    ) == PackageManager.PERMISSION_GRANTED
+//                ) {
+//                    device.uuids?.firstOrNull()?.uuid ?: UUID.randomUUID()
+//                } else {
+//                    onConnectionResult(false, "Разрешения BLUETOOTH_CONNECT отсутствуют")
+//                    return
+//                }
+//            } else {
+//                device.uuids?.firstOrNull()?.uuid ?: UUID.randomUUID()
+//            }
+//        } catch (e: SecurityException) {
+//            Log.e("BluetoothHelper", "Ошибка доступа к UUID: ${e.message}")
+//            onConnectionResult(false, "Ошибка доступа к UUID")
+//            return
+//        }
+//
+//        // Запускаем сопряжение в отдельной корутине
+//        CoroutineScope(Dispatchers.IO).launch {
+//            try {
+//                bluetoothSocket = try {
+//                    device.createRfcommSocketToServiceRecord(uuid)
+//                } catch (e: SecurityException) {
+//                    Log.e("BluetoothHelper", "Ошибка создания сокета: ${e.message}")
+//                    withContext(Dispatchers.Main) {
+//                        onConnectionResult(false, "Ошибка создания сокета")
+//                    }
+//                    return@launch
+//                }
+//
+//                // Проверка разрешения перед вызовом connect()
+//                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//                    if (ContextCompat.checkSelfPermission(
+//                            context, Manifest.permission.BLUETOOTH_CONNECT
+//                        ) != PackageManager.PERMISSION_GRANTED
+//                    ) {
+//                        withContext(Dispatchers.Main) {
+//                            onConnectionResult(false, "Разрешения BLUETOOTH_CONNECT отсутствуют")
+//                        }
+//                        return@launch
+//                    }
+//                }
+//
+//                bluetoothSocket?.connect()
+//
+//                inputStream = bluetoothSocket?.inputStream
+//                outputStream = bluetoothSocket?.outputStream
+//                isConnected = true
+//
+//                withContext(Dispatchers.Main) {
+//                    onConnectionResult(
+//                        true, "Подключено к ${device.name ?: "Неизвестное устройство"}"
+//                    )
+//                    startListeningForData()
+//                }
+//            } catch (e: IOException) {
+//                Log.e("BluetoothHelper", "Ошибка подключения: ${e.message}")
+//                isConnected = false
+//                withContext(Dispatchers.Main) {
+//                    onConnectionResult(false, "Ошибка подключения: ${e.message}")
+//                }
+//                closeConnection()
+//            }
+//        }
+//    }
 
     // Send command to connected device
     fun sendCommand(command: String) {
@@ -244,11 +301,14 @@ class BluetoothHelper(private val context: Context) {
     // Listen for incoming data from the connected device
     fun listenForData(onDataReceived: (String) -> Unit) {
         if (!isConnected || inputStream == null || isListening) {
-            Log.e("BluetoothHelper", "Not connected or input stream unavailable")
+            Log.e("BluetoothHelper", "Прослушивание невозможно: устройство не подключено")
             return
         }
 
         isListening = true
+        var retryCount = 0
+        val maxRetries = 3 // Максимальное количество попыток переподключения
+
         CoroutineScope(Dispatchers.IO).launch {
             val buffer = ByteArray(1024)
             try {
@@ -262,16 +322,42 @@ class BluetoothHelper(private val context: Context) {
                     }
                 }
             } catch (e: IOException) {
-                Log.e("BluetoothHelper", "Error reading data: ${e.message}")
+                if (retryCount < maxRetries) {
+                    retryCount++
+                    Log.e(
+                        "BluetoothHelper",
+                        "Ошибка чтения данных: ${e.message}. Попытка ${retryCount} из $maxRetries"
+                    )
+                    delay(1000) // Задержка перед повторной попыткой
+                    listenForData(onDataReceived) // Перезапуск прослушивания
+                } else {
+                    Log.e(
+                        "BluetoothHelper",
+                        "Превышено количество попыток перезапуска прослушивания"
+                    )
+                    closeConnection()
+                }
             } finally {
                 isListening = false
                 if (isConnected) {
-                    Log.d("BluetoothHelper", "Re-listening after disconnection")
-                    listenForData(onDataReceived) // Повторное прослушивание
+                    Log.d("BluetoothHelper", "Перезапуск прослушивания после разрыва")
+                    listenForData(onDataReceived) // Перезапуск прослушивания
                 }
             }
         }
     }
+
+
+    private fun startListeningForData() {
+        if (isConnected && inputStream != null && !isListening) {
+            listenForData { data ->
+                Log.d("BluetoothHelper", "Полученные данные: $data")
+            }
+        } else {
+            Log.e("BluetoothHelper", "Не удалось начать прослушивание: устройство не подключено")
+        }
+    }
+
 
     // Close the Bluetooth connection
     fun closeConnection() {
@@ -279,10 +365,13 @@ class BluetoothHelper(private val context: Context) {
             inputStream?.close()
             outputStream?.close()
             bluetoothSocket?.close()
+        } catch (e: IOException) {
+            Log.e("BluetoothHelper", "Ошибка при закрытии соединения: ${e.message}")
+        } finally {
             isConnected = false
             isListening = false
-        } catch (e: IOException) {
-            Log.e("BluetoothHelper", "Error closing connection: ${e.message}")
+            bluetoothSocket = null
+            Log.d("BluetoothHelper", "Соединение закрыто")
         }
     }
 
@@ -342,9 +431,7 @@ class BluetoothHelper(private val context: Context) {
                     BluetoothDevice.ACTION_ACL_CONNECTED -> {
                         isConnected = true
                         logBluetoothEvent(
-                            context!!,
-                            locationManager,
-                            "Bluetooth соединение установлено"
+                            context!!, locationManager, "Bluetooth соединение установлено"
                         )
                         onStatusChange(true, true)
                     }
@@ -353,9 +440,7 @@ class BluetoothHelper(private val context: Context) {
                     BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                         isConnected = false
                         logBluetoothEvent(
-                            context!!,
-                            locationManager,
-                            "Bluetooth соединение потеряно"
+                            context!!, locationManager, "Bluetooth соединение потеряно"
                         )
                         onStatusChange(true, false)
 

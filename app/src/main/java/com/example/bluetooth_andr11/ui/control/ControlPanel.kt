@@ -90,7 +90,7 @@ fun ControlPanel(
                         } else {
                             isHeatOn.value = !isHeatOn.value
                             onCommandSend(if (isHeatOn.value) "H" else "h")
-                            LogModule.logEventWithLocation(
+                            LogModule.logEventWithLocationAndLimit(
                                 context = context,
                                 bluetoothHelper = bluetoothHelper,
                                 locationManager = locationManager,
@@ -122,7 +122,7 @@ fun ControlPanel(
                         } else {
                             isCoolOn.value = !isCoolOn.value
                             onCommandSend(if (isCoolOn.value) "C" else "c")
-                            LogModule.logEventWithLocation(
+                            LogModule.logEventWithLocationAndLimit(
                                 context = context,
                                 bluetoothHelper = bluetoothHelper,
                                 locationManager = locationManager,
@@ -152,7 +152,7 @@ fun ControlPanel(
                         } else {
                             isLightOn.value = !isLightOn.value
                             onCommandSend(if (isLightOn.value) "L" else "l")
-                            LogModule.logEventWithLocation(
+                            LogModule.logEventWithLocationAndLimit(
                                 context = context,
                                 bluetoothHelper = bluetoothHelper,
                                 locationManager = locationManager,
