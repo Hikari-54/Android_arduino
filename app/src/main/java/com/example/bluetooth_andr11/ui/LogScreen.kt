@@ -1,6 +1,8 @@
 package com.example.bluetooth_andr11.ui
 
 import android.app.DatePickerDialog
+import android.widget.Toast
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -50,26 +53,92 @@ fun LogScreen(navController: NavController) {
             Text(text = "Назад")
         }
 
-        // Экран фильтрации логов
+        // Фильтр логов
         LogFilterScreen { start, end ->
             startDate = start
             endDate = end
             logEntries = filterLogEntries(context, start, end)
         }
 
-        // Отображение списка логов
+        // Таблица с логами
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = 16.dp)
         ) {
             items(logEntries) { entry ->
-                Text(text = entry, modifier = Modifier.padding(8.dp))
-                HorizontalDivider()
+                val parts = entry.split(" - ", limit = 2)
+                val timestamp = parts.getOrNull(0) ?: "Неизвестная дата"
+                val event =
+                    parts.getOrNull(1)?.substringBefore("@")?.trim() ?: "Неизвестное событие"
+                val coordinatesString = parts.getOrNull(1)?.substringAfter("@")?.trim()
+
+                // Разделяем дату и время
+                val dateParts = timestamp.split(" ")
+                val date = dateParts.getOrNull(0)?.let { formatDateWithoutYear(it) } ?: ""
+                val time = dateParts.getOrNull(1) ?: ""
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                        .border(1.dp, Color.Gray)
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Дата и время на двух строках
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(text = date)
+                        Text(text = time)
+                    }
+
+                    // Событие с паддингами
+                    Text(
+                        text = event,
+                        modifier = Modifier
+                            .weight(2f)
+                            .padding(start = 16.dp),
+                        color = Color.Black
+                    )
+
+                    // Кнопка карты
+                    Button(
+                        onClick = {
+                            if (coordinatesString != null) {
+                                Toast.makeText(
+                                    context,
+                                    "Открытие карты для: $coordinatesString",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                Toast.makeText(context, "Координаты недоступны", Toast.LENGTH_SHORT)
+                                    .show()
+                            }
+                        }, colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF1E1E2F), contentColor = Color.White
+                        )
+                    ) {
+                        Text("Карта")
+                    }
+                }
             }
         }
     }
 }
+
+// Форматируем дату без года
+fun formatDateWithoutYear(date: String): String {
+    val parts = date.split("-")
+    return if (parts.size >= 2) {
+        "${parts[1]}.${parts[2]}"
+    } else {
+        date
+    }
+}
+
 
 @Composable
 fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
