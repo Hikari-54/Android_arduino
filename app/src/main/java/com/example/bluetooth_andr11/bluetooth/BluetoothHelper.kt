@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,96 +37,176 @@ class BluetoothHelper(private val context: Context) {
     private var isListening = false // Prevent duplicate coroutine starts
     private var isConnected = false
 
+    private var dialogShown = false // Чтобы не показывать диалог слишком часто
+
     // Check if Bluetooth is enabled
     val isDeviceConnected: Boolean
         get() = isConnected
 
-
-    // Get paired devices
-    fun getPairedDevices(): Set<BluetoothDevice>? {
-        if (!hasBluetoothPermission()) {
-            Log.e("BluetoothHelper", "Bluetooth permissions are missing")
-            return null
-        }
+    // Получить список сопряженных устройств
+    private fun getPairedDevices(): Set<BluetoothDevice>? {
         return try {
-            bluetoothAdapter?.bondedDevices
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    bluetoothAdapter?.bondedDevices
+                } else {
+                    Log.e("BluetoothHelper", "Разрешение BLUETOOTH_CONNECT отсутствует")
+                    null
+                }
+            } else {
+                bluetoothAdapter?.bondedDevices
+            }
         } catch (e: SecurityException) {
-            Log.e("BluetoothHelper", "Permission error when accessing paired devices: ${e.message}")
+            Log.e("BluetoothHelper", "Ошибка доступа к сопряженным устройствам: ${e.message}")
             null
         }
     }
 
-    // Display a device selection dialog
+    // Отключение устройства при выключении Bluetooth
+    fun disconnectDevice() {
+        try {
+            inputStream?.close()
+            outputStream?.close()
+            bluetoothSocket?.close()
+            isConnected = false
+            isListening = false
+            Log.d("BluetoothHelper", "Устройство отключено")
+        } catch (e: IOException) {
+            Log.e("BluetoothHelper", "Ошибка при отключении устройства: ${e.message}")
+        } finally {
+            bluetoothSocket = null
+            dialogShown = false // Сбрасываем флаг
+        }
+    }
+
+
     fun showDeviceSelectionDialog(context: Context, onDeviceSelected: (BluetoothDevice) -> Unit) {
-        val pairedDevices = getPairedDevices()
-        if (pairedDevices.isNullOrEmpty()) {
-            Toast.makeText(context, "No paired devices found", Toast.LENGTH_SHORT).show()
+        val pairedDevices = try {
+            getPairedDevices()
+        } catch (e: SecurityException) {
+            Log.e("BluetoothHelper", "Ошибка доступа к устройствам: ${e.message}")
+            Toast.makeText(context, "Нет доступа к спаренным устройствам", Toast.LENGTH_SHORT)
+                .show()
+            dialogShown = false // Сбрасываем флаг, если произошла ошибка
             return
         }
 
-        val deviceNames = pairedDevices.map {
+        if (pairedDevices.isNullOrEmpty()) {
+            Toast.makeText(context, "Нет спаренных устройств", Toast.LENGTH_SHORT).show()
+            dialogShown = false // Сбрасываем флаг, если устройств нет
+            return
+        }
+
+        // Обрабатываем доступ к именам устройств с проверкой разрешения
+        val deviceNames = pairedDevices.map { device ->
             try {
-                it.name ?: "Unknown"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.BLUETOOTH_CONNECT
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        device.name ?: "Неизвестное устройство"
+                    } else {
+                        "Нет доступа к имени устройства"
+                    }
+                } else {
+                    device.name ?: "Неизвестное устройство"
+                }
             } catch (e: SecurityException) {
-                Log.e(
-                    "BluetoothHelper", "Permission error when accessing device name: ${e.message}"
-                )
-                "Unknown"
+                Log.e("BluetoothHelper", "Ошибка доступа к имени устройства: ${e.message}")
+                "Ошибка доступа"
             }
         }
 
         val deviceList = pairedDevices.toList()
 
+        // Отображение диалогового окна
         val builder = AlertDialog.Builder(context)
-        builder.setTitle("Select a Bluetooth Device")
+        builder.setTitle("Выберите Bluetooth-устройство")
         builder.setItems(deviceNames.toTypedArray()) { _, which ->
             onDeviceSelected(deviceList[which])
         }
-        builder.setNegativeButton("Cancel", null)
+        builder.setOnDismissListener {
+            dialogShown = false // Сбрасываем флаг при закрытии диалога
+        }
+        builder.setNegativeButton("Отмена", null)
         builder.show()
     }
 
-    // Подключение к Bluetooth-устройству
+
+    // Подключиться к устройству
     fun connectToDevice(device: BluetoothDevice, onConnectionResult: (Boolean, String) -> Unit) {
         if (!hasBluetoothPermission()) {
-            onConnectionResult(false, "Bluetooth permissions are missing")
+            onConnectionResult(false, "Разрешения Bluetooth отсутствуют")
             return
         }
 
+        // Проверяем наличие UUID у устройства
         val uuid = try {
-            device.uuids?.firstOrNull()?.uuid ?: UUID.randomUUID()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    device.uuids?.firstOrNull()?.uuid ?: UUID.randomUUID()
+                } else {
+                    onConnectionResult(false, "Разрешения BLUETOOTH_CONNECT отсутствуют")
+                    return
+                }
+            } else {
+                device.uuids?.firstOrNull()?.uuid ?: UUID.randomUUID()
+            }
         } catch (e: SecurityException) {
-            Log.e("BluetoothHelper", "Permission error when accessing UUID: ${e.message}")
-            onConnectionResult(false, "Permission error when accessing UUID")
+            Log.e("BluetoothHelper", "Ошибка доступа к UUID: ${e.message}")
+            onConnectionResult(false, "Ошибка доступа к UUID")
             return
         }
 
+        // Запускаем сопряжение в отдельной корутине
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                bluetoothSocket = device.createRfcommSocketToServiceRecord(uuid)
+                bluetoothSocket = try {
+                    device.createRfcommSocketToServiceRecord(uuid)
+                } catch (e: SecurityException) {
+                    Log.e("BluetoothHelper", "Ошибка создания сокета: ${e.message}")
+                    withContext(Dispatchers.Main) {
+                        onConnectionResult(false, "Ошибка создания сокета")
+                    }
+                    return@launch
+                }
+
+                // Проверка разрешения перед вызовом connect()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.BLUETOOTH_CONNECT
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        withContext(Dispatchers.Main) {
+                            onConnectionResult(false, "Разрешения BLUETOOTH_CONNECT отсутствуют")
+                        }
+                        return@launch
+                    }
+                }
+
                 bluetoothSocket?.connect()
 
                 inputStream = bluetoothSocket?.inputStream
                 outputStream = bluetoothSocket?.outputStream
                 isConnected = true
 
-                val deviceName = device.name ?: "Unknown"
-
                 withContext(Dispatchers.Main) {
-                    onConnectionResult(true, "Connected to $deviceName")
+                    onConnectionResult(
+                        true, "Подключено к ${device.name ?: "Неизвестное устройство"}"
+                    )
                 }
-            } catch (e: SecurityException) {
-                Log.e("BluetoothHelper", "Permission error when connecting: ${e.message}")
-                isConnected = false
-                withContext(Dispatchers.Main) {
-                    onConnectionResult(false, "Permission error when connecting")
-                }
-                closeConnection()
             } catch (e: IOException) {
-                Log.e("BluetoothHelper", "Connection error: ${e.message}")
+                Log.e("BluetoothHelper", "Ошибка подключения: ${e.message}")
                 isConnected = false
                 withContext(Dispatchers.Main) {
-                    onConnectionResult(false, "Connection error: ${e.message}")
+                    onConnectionResult(false, "Ошибка подключения: ${e.message}")
                 }
                 closeConnection()
             }
@@ -192,33 +273,82 @@ class BluetoothHelper(private val context: Context) {
 
     // Check Bluetooth permissions
     private fun hasBluetoothPermission(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val permissions = listOf(
                 Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN
             )
-            return permissions.all {
+            permissions.all {
                 ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
             }
+        } else {
+            true
         }
-        return true // Permissions are not required for Bluetooth before Android 12
     }
 
-    fun monitorConnectionStatus(onStatusChange: (Boolean) -> Unit) {
-        bluetoothAdapter?.let { adapter ->
-            val receiver = object : BroadcastReceiver() {
-                override fun onReceive(context: Context, intent: Intent) {
-                    when (intent.action) {
-                        BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED -> {
-                            val state =
-                                intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE, -1)
-                            onStatusChange(state == BluetoothAdapter.STATE_CONNECTED)
+    fun monitorBluetoothStatus(context: Context, onStatusChange: (Boolean, Boolean) -> Unit) {
+        val filter = IntentFilter().apply {
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    BluetoothAdapter.ACTION_STATE_CHANGED -> {
+                        val state =
+                            intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                        val isEnabled = state == BluetoothAdapter.STATE_ON
+
+                        if (state == BluetoothAdapter.STATE_TURNING_OFF || state == BluetoothAdapter.STATE_OFF) {
+                            disconnectDevice() // Закрываем соединение при выключении Bluetooth
+                            dialogShown = false // Сбрасываем флаг диалога
+                        }
+
+                        onStatusChange(isEnabled, isConnected)
+
+                        if (isEnabled && !isConnected && !dialogShown) {
+                            dialogShown = true
+                            showDeviceSelection(context)
+                        }
+                    }
+
+                    BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                        isConnected = true
+                        onStatusChange(true, true)
+                    }
+
+                    BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                        isConnected = false
+                        onStatusChange(true, false)
+
+                        if (isBluetoothEnabled() && !dialogShown) {
+                            dialogShown = true
+                            showDeviceSelection(context)
                         }
                     }
                 }
             }
-
-            val filter = IntentFilter(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
-            context.registerReceiver(receiver, filter)
         }
+
+        context.registerReceiver(receiver, filter)
+    }
+
+    private fun showDeviceSelection(context: Context?) {
+        (context as? ComponentActivity)?.runOnUiThread {
+            if (!dialogShown) {
+                dialogShown = true
+                showDeviceSelectionDialog(context) { device ->
+                    connectToDevice(device) { success, message ->
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        dialogShown = false
+                    }
+                }
+            }
+        }
+    }
+
+    fun isBluetoothEnabled(): Boolean {
+        return bluetoothAdapter?.isEnabled == true
     }
 }

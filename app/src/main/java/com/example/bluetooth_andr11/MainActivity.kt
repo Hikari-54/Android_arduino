@@ -41,6 +41,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var permissionHelper: PermissionHelper
     private lateinit var locationManager: LocationManager
 
+    private val isBluetoothEnabled = mutableStateOf(false) // Состояние Bluetooth адаптера
+    private val isDeviceConnected = mutableStateOf(false) // Состояние подключения устройства
 
     private val allPermissionsGranted = mutableStateOf(false)
     private val batteryPercent = mutableStateOf(0) // Информация о батарее
@@ -73,6 +75,24 @@ class MainActivity : ComponentActivity() {
         setupCachePath()
 
         bluetoothHelper = BluetoothHelper(this)
+
+        // Отслеживаем изменения состояния Bluetooth и подключения устройства
+        bluetoothHelper.monitorBluetoothStatus(this) { isEnabled, isConnected ->
+            isBluetoothEnabled.value = isEnabled
+            isDeviceConnected.value = isConnected
+
+            // Блокируем кнопки управления, если устройство не подключено
+            if (isEnabled && !isConnected) {
+                bluetoothHelper.showDeviceSelectionDialog(this) { device ->
+                    bluetoothHelper.connectToDevice(device) { success, message ->
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                        isDeviceConnected.value = success
+                    }
+                }
+            }
+        }
+
+
         permissionHelper = PermissionHelper(this, requestPermissionsLauncher)
         locationManager = LocationManager(
             context = this,
@@ -91,6 +111,9 @@ class MainActivity : ComponentActivity() {
 //        simulateDebugLogs(this, locationManager)
 //        LogModule.logEventWithLocation(this, bluetoothHelper, locationManager, "Сумка закрыта")
 
+        LogModule.logEvent(this, "Приложение запущено")
+
+
         setContent {
             Bluetooth_andr11Theme {
                 val navController = rememberNavController()
@@ -98,7 +121,9 @@ class MainActivity : ComponentActivity() {
                 Scaffold(topBar = {
                     AppTopBar(
                         batteryLevel = batteryPercent.value,
-                        isBluetoothConnected = isBluetoothConnected.value,
+                        isBluetoothEnabled = isBluetoothEnabled.value,
+                        isDeviceConnected = isDeviceConnected.value,
+//                        bluetoothHelper = bluetoothHelper,
                         allPermissionsGranted = allPermissionsGranted.value,
                         onPermissionsClick = ::handlePermissionsIconClick,
                         onBluetoothClick = ::handleConnectToDevice

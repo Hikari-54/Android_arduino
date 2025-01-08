@@ -21,12 +21,21 @@ import com.example.bluetooth_andr11.R
 
 @Composable
 fun AppTopBar(
-    batteryLevel: Int,
-    isBluetoothConnected: Boolean,
-    allPermissionsGranted: Boolean,
-    onPermissionsClick: () -> Unit,
-    onBluetoothClick: () -> Unit
+    batteryLevel: Int, isBluetoothEnabled: Boolean, isDeviceConnected: Boolean,
+//    bluetoothHelper: BluetoothHelper,
+    allPermissionsGranted: Boolean, onPermissionsClick: () -> Unit, onBluetoothClick: () -> Unit
 ) {
+//    var isBluetoothEnabled: Boolean by remember { mutableStateOf(false) }
+//    var isDeviceConnected: Boolean by remember { mutableStateOf(false) }
+//
+//    // Следим за изменениями состояния Bluetooth
+//    LaunchedEffect(bluetoothHelper) {
+//        bluetoothHelper.monitorBluetoothStatus { isEnabled, isConnected ->
+//            isBluetoothEnabled = isEnabled
+//            isDeviceConnected = isConnected
+//        }
+//    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -36,9 +45,7 @@ fun AppTopBar(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = "Delivery bag",
-            color = Color.White,
-            fontSize = 20.sp
+            text = "Delivery bag", color = Color.White, fontSize = 20.sp
         )
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -57,10 +64,10 @@ fun AppTopBar(
             IconButton(onClick = onBluetoothClick) {
                 Icon(
                     painter = painterResource(
-                        if (isBluetoothConnected) R.drawable.bluetooth else R.drawable.bluetooth_off
+                        if (isBluetoothEnabled && isDeviceConnected) R.drawable.bluetooth else R.drawable.bluetooth_off
                     ),
                     contentDescription = "Bluetooth",
-                    tint = if (isBluetoothConnected) Color.Green else Color.Red
+                    tint = if (isBluetoothEnabled && isDeviceConnected) Color.Green else Color.Red
                 )
             }
 
@@ -74,8 +81,7 @@ fun AppTopBar(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "$batteryLevel%",
-                    color = Color.White
+                    text = "$batteryLevel%", color = Color.White
                 )
             }
         }

@@ -23,12 +23,21 @@ object LogModule {
         return logDir
     }
 
-    // Получаем лог-файл на основе текущей даты
-//    private fun getLogFile(context: Context): File {
-//        val logDir = getLogDirectory(context)
-//        val fileName = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-//        return File(logDir, "$fileName.txt")
-//    }
+    private fun getLogFile(context: Context): File {
+        val logDir = File(context.getExternalFilesDir(null), "logs")
+        if (!logDir.exists()) {
+            logDir.mkdirs()
+        }
+        return File(logDir, "log.txt")
+    }
+
+    private fun getEventLogFile(context: Context): File {
+        val logDir = File(context.getExternalFilesDir(null), "logs")
+        if (!logDir.exists()) {
+            logDir.mkdirs()
+        }
+        return File(logDir, "events_log.txt")
+    }
 
     // Чтение логов
     fun readLogs(context: Context): List<String> {
@@ -69,12 +78,13 @@ object LogModule {
         locationManager: LocationManager,
         event: String
     ) {
-        if (bluetoothHelper.isDeviceConnected) {
+        // Проверяем, подключено ли устройство по Bluetooth
+        if (!bluetoothHelper.isDeviceConnected) {
             Log.d("LogModule", "Логи не записываются: устройство не подключено")
             return
         }
 
-        // Используем метод LocationManager для получения координат
+        // Получаем текущие координаты
         val currentCoordinates = locationManager.getCurrentCoordinates()
         val logMessage = if (currentCoordinates.isEmpty()) {
             "$event @ Координаты недоступны"
@@ -84,7 +94,9 @@ object LogModule {
 
         // Записываем событие в лог-файл
         logEvent(context, logMessage)
+        Log.d("LogModule", "Событие записано: $logMessage")
     }
+
 
     fun logEvent(context: Context, event: String) {
         try {
