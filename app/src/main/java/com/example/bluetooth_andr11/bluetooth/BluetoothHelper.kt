@@ -203,6 +203,7 @@ class BluetoothHelper(private val context: Context) {
                     onConnectionResult(
                         true, "Подключено к ${device.name ?: "Неизвестное устройство"}"
                     )
+                    listenForDataSafely()
                 }
             } catch (e: IOException) {
                 Log.e("BluetoothHelper", "Ошибка подключения: ${e.message}")
@@ -212,6 +213,17 @@ class BluetoothHelper(private val context: Context) {
                 }
                 closeConnection()
             }
+        }
+    }
+
+    // Безопасное прослушивание данных с проверкой состояния подключения
+    private fun listenForDataSafely() {
+        if (isConnected && inputStream != null) {
+            listenForData { data ->
+                Log.d("BluetoothHelper", "Полученные данные: $data")
+            }
+        } else {
+            Log.e("BluetoothHelper", "Не удалось начать прослушивание, устройство не подключено")
         }
     }
 
@@ -239,8 +251,8 @@ class BluetoothHelper(private val context: Context) {
         isListening = true
         CoroutineScope(Dispatchers.IO).launch {
             val buffer = ByteArray(1024)
-            while (isConnected) {
-                try {
+            try {
+                while (isConnected) {
                     val bytes = inputStream?.read(buffer) ?: break
                     if (bytes > 0) {
                         val data = String(buffer, 0, bytes)
@@ -248,15 +260,16 @@ class BluetoothHelper(private val context: Context) {
                             onDataReceived(data)
                         }
                     }
-                } catch (e: SecurityException) {
-                    Log.e("BluetoothHelper", "Permission error when reading data: ${e.message}")
-                    break
-                } catch (e: IOException) {
-                    Log.e("BluetoothHelper", "Error reading data: ${e.message}")
-                    break
+                }
+            } catch (e: IOException) {
+                Log.e("BluetoothHelper", "Error reading data: ${e.message}")
+            } finally {
+                isListening = false
+                if (isConnected) {
+                    Log.d("BluetoothHelper", "Re-listening after disconnection")
+                    listenForData(onDataReceived) // Повторное прослушивание
                 }
             }
-            isListening = false
         }
     }
 
@@ -301,6 +314,7 @@ class BluetoothHelper(private val context: Context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
+                    // Изменение состояния Bluetooth-адаптера
                     BluetoothAdapter.ACTION_STATE_CHANGED -> {
                         val state =
                             intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
@@ -308,20 +322,23 @@ class BluetoothHelper(private val context: Context) {
 
                         if (state == BluetoothAdapter.STATE_TURNING_OFF || state == BluetoothAdapter.STATE_OFF) {
                             disconnectDevice()
+                            logBluetoothEvent(context!!, locationManager, "Bluetooth выключен")
                             dialogShown = false
-                            context?.let {
-                                logBluetoothEvent(it, locationManager, "Bluetooth выключен")
-                            }
                         }
 
+                        // Обновляем состояние
                         onStatusChange(isEnabled, isConnected)
 
-                        if (isEnabled && !isConnected && !dialogShown) {
-                            dialogShown = true
-                            showDeviceSelection(context!!)
+                        // Если Bluetooth включен и соединение отсутствует
+                        if (isEnabled) {
+                            if (!isConnected && !dialogShown) {
+                                dialogShown = true
+                                showDeviceSelection(context!!)
+                            }
                         }
                     }
 
+                    // Подключение устройства
                     BluetoothDevice.ACTION_ACL_CONNECTED -> {
                         isConnected = true
                         logBluetoothEvent(
@@ -332,6 +349,7 @@ class BluetoothHelper(private val context: Context) {
                         onStatusChange(true, true)
                     }
 
+                    // Отключение устройства
                     BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                         isConnected = false
                         logBluetoothEvent(
@@ -341,6 +359,7 @@ class BluetoothHelper(private val context: Context) {
                         )
                         onStatusChange(true, false)
 
+                        // Если Bluetooth включен, но устройство отключено — показываем диалог подключения
                         if (isBluetoothEnabled() && !dialogShown) {
                             dialogShown = true
                             showDeviceSelection(context)
@@ -355,9 +374,7 @@ class BluetoothHelper(private val context: Context) {
 
 
     private fun logBluetoothEvent(
-        context: Context,
-        locationManager: LocationManager,
-        event: String
+        context: Context, locationManager: LocationManager, event: String
     ) {
         CoroutineScope(Dispatchers.IO).launch {
             val coordinates = locationManager.getCurrentCoordinates()

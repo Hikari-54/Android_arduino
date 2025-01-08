@@ -86,7 +86,11 @@ class MainActivity : ComponentActivity() {
             isBluetoothEnabled.value = isEnabled
             isDeviceConnected.value = isConnected
 
-            if (isEnabled && !isConnected) {
+            if (isConnected) {
+                bluetoothHelper.listenForData { data ->
+                    handleReceivedData(data)
+                }
+            } else if (isEnabled && !isConnected) {
                 bluetoothHelper.showDeviceSelectionDialog(this) { device ->
                     bluetoothHelper.connectToDevice(device) { success, message ->
                         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
