@@ -48,7 +48,8 @@ fun LogScreen(navController: NavController) {
             onClick = { navController.popBackStack() },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp)
+                .padding(bottom = 16.dp),
+            colors = customButtonColors()
         ) {
             Text(text = "Назад")
         }
@@ -117,9 +118,7 @@ fun LogScreen(navController: NavController) {
                                 Toast.makeText(context, "Координаты недоступны", Toast.LENGTH_SHORT)
                                     .show()
                             }
-                        }, colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF1E1E2F), contentColor = Color.White
-                        )
+                        }, colors = customButtonColors()
                     ) {
                         Text("Карта")
                     }
@@ -128,6 +127,7 @@ fun LogScreen(navController: NavController) {
         }
     }
 }
+
 
 // Форматируем дату без года
 fun formatDateWithoutYear(date: String): String {
@@ -177,7 +177,7 @@ fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
                 if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
                     onFilterApplied(startDate, endDate)
                 }
-            }, modifier = Modifier.align(Alignment.CenterVertically)
+            }, modifier = Modifier.align(Alignment.CenterVertically), colors = customButtonColors()
         ) {
             Text("Отфильтровать")
         }
@@ -206,7 +206,14 @@ fun DatePickerButton(label: String, date: String, onDateSelected: (String) -> Un
         }, year, month, day
     )
 
-    Button(onClick = { datePickerDialog.show() }) {
+    Button(
+        onClick = { datePickerDialog.show() }, colors = customButtonColors()
+    ) {
         Text(text = if (date.isEmpty()) label else "Дата: $date")
     }
 }
+
+@Composable
+fun customButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = Color(0xFF252525), contentColor = Color.White
+)

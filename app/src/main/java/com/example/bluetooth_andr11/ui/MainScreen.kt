@@ -97,7 +97,7 @@ fun MainScreen(
 
             // Кнопка перехода на экран логов
             item {
-                Button(onClick = onNavigateToLogs) {
+                Button(onClick = onNavigateToLogs, colors = customButtonColors()) {
                     Text(text = "Показать логи")
                 }
             }
