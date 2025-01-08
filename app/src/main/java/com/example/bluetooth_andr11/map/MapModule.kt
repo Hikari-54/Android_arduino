@@ -15,6 +15,7 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
@@ -153,4 +154,13 @@ object MapModule {
         myLocationOverlay?.disableFollowLocation()
     }
 
+    fun addMarker(mapView: MapView, latitude: Double, longitude: Double) {
+        val marker = Marker(mapView).apply {
+            position = GeoPoint(latitude, longitude)
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+            title = "Местоположение события"
+        }
+        mapView.overlays.add(marker)
+        mapView.invalidate()
+    }
 }

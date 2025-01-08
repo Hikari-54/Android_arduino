@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.bluetooth_andr11.ui.map_log.MapModal
 import com.example.bluetooth_andr11.utils.LogHelper.filterLogEntries
 import java.util.Calendar
 import java.util.Locale
@@ -37,6 +38,19 @@ fun LogScreen(navController: NavController) {
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var logEntries by remember { mutableStateOf(listOf<String>()) }
+    var showMapModal by remember { mutableStateOf(false) }
+    var selectedCoordinates by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var selectedEventTitle by remember { mutableStateOf("") }
+
+    // Показ модального окна карты
+    if (showMapModal && selectedCoordinates != null) {
+        MapModal(
+            context = context,
+            coordinates = selectedCoordinates!!,
+            onDismiss = { showMapModal = false },
+            eventTitle = selectedEventTitle
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -74,6 +88,11 @@ fun LogScreen(navController: NavController) {
                     parts.getOrNull(1)?.substringBefore("@")?.trim() ?: "Неизвестное событие"
                 val coordinatesString = parts.getOrNull(1)?.substringAfter("@")?.trim()
 
+                // Разделяем координаты
+                val coordinates = coordinatesString?.split(",")?.map { it.trim().toDoubleOrNull() }
+                val latitude = coordinates?.getOrNull(0)
+                val longitude = coordinates?.getOrNull(1)
+
                 // Разделяем дату и время
                 val dateParts = timestamp.split(" ")
                 val date = dateParts.getOrNull(0)?.let { formatDateWithoutYear(it) } ?: ""
@@ -108,12 +127,10 @@ fun LogScreen(navController: NavController) {
                     // Кнопка карты
                     Button(
                         onClick = {
-                            if (coordinatesString != null) {
-                                Toast.makeText(
-                                    context,
-                                    "Открытие карты для: $coordinatesString",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                            if (latitude != null && longitude != null) {
+                                selectedCoordinates = Pair(latitude, longitude)
+                                selectedEventTitle = event
+                                showMapModal = true
                             } else {
                                 Toast.makeText(context, "Координаты недоступны", Toast.LENGTH_SHORT)
                                     .show()
