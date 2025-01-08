@@ -64,7 +64,7 @@ class LocationManager(
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 locationResult.lastLocation?.let { location ->
-                    val coordinates = "Широта: ${location.latitude}, Долгота: ${location.longitude}"
+                    val coordinates = "${location.latitude}, ${location.longitude}"
                     locationCoordinates.value = coordinates
                     onLocationUpdated(coordinates)
                 }
