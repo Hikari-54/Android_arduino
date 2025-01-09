@@ -31,8 +31,6 @@ fun ControlPanel(
     temp1: String,
     temp2: String,
     hallState: String,
-//    functionState: String,
-//    coordinates: String,
     acc: String,
     isHeatOn: MutableState<Boolean>,
     isCoolOn: MutableState<Boolean>,

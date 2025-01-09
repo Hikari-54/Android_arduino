@@ -121,7 +121,6 @@ fun LogScreen(navController: NavController) {
                         modifier = Modifier
                             .weight(2f)
                             .padding(start = 2.dp),
-                        color = Color.Black
                     )
 
                     // Кнопка карты
@@ -145,7 +144,6 @@ fun LogScreen(navController: NavController) {
     }
 }
 
-
 // Форматируем дату без года
 fun formatDateWithoutYear(date: String): String {
     val parts = date.split("-")
@@ -155,7 +153,6 @@ fun formatDateWithoutYear(date: String): String {
         date
     }
 }
-
 
 @Composable
 fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {

@@ -15,7 +15,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.bluetooth_andr11.map.MapModule
 import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.MapView
 
 @Composable
 fun MapOverlay(
