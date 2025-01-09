@@ -53,7 +53,7 @@ fun MapModal(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = eventTitle, modifier = Modifier.weight(1f), fontSize = 18.sp
+                            text = eventTitle, modifier = Modifier.weight(1f), fontSize = 18.sp, color = Color.Black,
                         )
                         Icon(imageVector = Icons.Default.Close,
                             contentDescription = "Закрыть",
