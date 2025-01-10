@@ -1,6 +1,5 @@
 package com.example.bluetooth_andr11
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -28,10 +27,6 @@ import com.example.bluetooth_andr11.ui.MainScreen
 import com.example.bluetooth_andr11.ui.control.AppTopBar
 import com.example.bluetooth_andr11.ui.theme.Bluetooth_andr11Theme
 import com.google.android.gms.location.LocationServices
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import java.io.File
 
@@ -58,8 +53,8 @@ class MainActivity : ComponentActivity() {
 
     private var lastUpperLoggedTemp: Float? = null
     private var lastLowerLoggedTemp: Float? = null
-    private var upperTrendUp = true
-    private var lowerTrendDown = true
+//    private var upperTrendUp = true
+//    private var lowerTrendDown = true
 
     private var lastLoggedBagState: String? = null
 
@@ -117,7 +112,7 @@ class MainActivity : ComponentActivity() {
         }
 
         // Эмулируем данные от Arduino
-//        simulateDebugLogs(this, locationManager)
+//        simulateTemperatureChanges(this, locationManager, bluetoothHelper)
 //        LogModule.logEventWithLocation(this, bluetoothHelper, locationManager, "Сумка закрыта")
 
         LogModule.logEvent(this, "Приложение запущено")
@@ -385,9 +380,9 @@ class MainActivity : ComponentActivity() {
     }
 
     // Проверка допустимого изменения температуры
-    private fun isValidTempChange(lastTemp: Float?, newTemp: Float, maxChange: Float): Boolean {
-        return lastTemp == null || kotlin.math.abs(newTemp - lastTemp) <= maxChange
-    }
+//    private fun isValidTempChange(lastTemp: Float?, newTemp: Float, maxChange: Float): Boolean {
+//        return lastTemp == null || kotlin.math.abs(newTemp - lastTemp) <= maxChange
+//    }
 
     private fun logBatteryThresholds(batteryValue: Int) {
         when {
@@ -414,43 +409,45 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun logTemperatureWithBoundaries(temp1Value: Float?, temp2Value: Float?) {
-        // Верхний отсек (от 40 до 60°C) — фиксируем максимум при росте и минимум при снижении
-        if (temp1Value != null && temp1Value in 40f..60f) {
-            if ((upperTrendUp && temp1Value > (lastUpperLoggedTemp
-                    ?: Float.MIN_VALUE)) || (!upperTrendUp && temp1Value < (lastUpperLoggedTemp
-                    ?: Float.MAX_VALUE))
-            ) {
-                lastUpperLoggedTemp = temp1Value
-                upperTrendUp = temp1Value >= (lastUpperLoggedTemp ?: temp1Value)
+        // Пороговые значения для верхнего и нижнего отсеков
+        val upperThresholds = listOf(40, 50, 60)
+        val lowerThresholds = listOf(5, 10, 15)
 
-                val event = when {
-                    temp1Value >= 60 -> "Температура верхнего отсека достигла 60°C"
-                    temp1Value >= 50 -> "Температура верхнего отсека достигла 50°C"
-                    else -> "Температура верхнего отсека достигла 40°C"
+        // Логирование температуры верхнего отсека по порогам
+        if (temp1Value != null) {
+            val temp1Int = temp1Value.toInt()
+            if (lastUpperLoggedTemp == null || (temp1Int in upperThresholds && temp1Int.toFloat() != lastUpperLoggedTemp)) {
+                val event = when (temp1Int) {
+                    40 -> "Температура верхнего отсека достигла 40°C"
+                    50 -> "Температура верхнего отсека достигла 50°C"
+                    60 -> "Температура верхнего отсека достигла 60°C"
+                    else -> null
                 }
-                LogModule.logEventWithLocationAndLimit(
-                    this, bluetoothHelper, locationManager, event
-                )
+                event?.let {
+                    LogModule.logEventWithLocationAndLimit(
+                        this, bluetoothHelper, locationManager, it
+                    )
+                    lastUpperLoggedTemp = temp1Int.toFloat()
+                }
             }
         }
 
-        // Нижний отсек (от 5 до 20°C) — фиксируем минимум при падении и максимум при росте
-        if (temp2Value != null && temp2Value in 5f..20f) {
-            if ((lowerTrendDown && temp2Value < (lastLowerLoggedTemp
-                    ?: Float.MAX_VALUE)) || (!lowerTrendDown && temp2Value > (lastLowerLoggedTemp
-                    ?: Float.MIN_VALUE))
-            ) {
-                lastLowerLoggedTemp = temp2Value
-                lowerTrendDown = temp2Value <= (lastLowerLoggedTemp ?: temp2Value)
-
-                val event = when {
-                    temp2Value <= 5 -> "Температура нижнего отсека упала до 5°C"
-                    temp2Value <= 10 -> "Температура нижнего отсека упала до 10°C"
-                    else -> "Температура нижнего отсека упала до 15°C"
+        // Логирование температуры нижнего отсека по порогам
+        if (temp2Value != null) {
+            val temp2Int = temp2Value.toInt()
+            if (lastLowerLoggedTemp == null || (temp2Int in lowerThresholds && temp2Int.toFloat() != lastLowerLoggedTemp)) {
+                val event = when (temp2Int) {
+                    5 -> "Температура нижнего отсека упала до 5°C"
+                    10 -> "Температура нижнего отсека упала до 10°C"
+                    15 -> "Температура нижнего отсека упала до 15°C"
+                    else -> null
                 }
-                LogModule.logEventWithLocationAndLimit(
-                    this, bluetoothHelper, locationManager, event
-                )
+                event?.let {
+                    LogModule.logEventWithLocationAndLimit(
+                        this, bluetoothHelper, locationManager, it
+                    )
+                    lastLowerLoggedTemp = temp2Int.toFloat()
+                }
             }
         }
     }
@@ -466,74 +463,6 @@ class MainActivity : ComponentActivity() {
 
     private fun sendCommandToDevice(command: String) {
         bluetoothHelper.sendCommand(command)
-    }
-
-
-    fun simulateDebugLogs(
-        context: Context, locationManager: LocationManager, bluetoothHelper: BluetoothHelper
-    ) {
-        CoroutineScope(Dispatchers.IO).launch {
-            var simulatedBatteryLevel = 100
-            var upperCompartmentTemp = 35f
-            var lowerCompartmentTemp = 25f
-
-            // Храним уже записанные события
-            val loggedEvents = mutableSetOf<String>()
-
-            // Симуляция изменений
-            while (true) {
-                delay(2000) // Каждые 2 секунды симулируем изменения
-
-                // Симуляция изменения заряда батареи
-                simulatedBatteryLevel -= (1..5).random()
-                simulatedBatteryLevel = simulatedBatteryLevel.coerceIn(0, 100)
-
-                // Симуляция изменения температуры верхнего отсека
-                upperCompartmentTemp += listOf(-2f, -1f, 0f, 1f, 2f).random()
-                upperCompartmentTemp = upperCompartmentTemp.coerceIn(30f, 65f)
-
-                // Симуляция изменения температуры нижнего отсека
-                lowerCompartmentTemp += listOf(-1f, -0.5f, 0f, 0.5f, 1f).random()
-                lowerCompartmentTemp = lowerCompartmentTemp.coerceIn(0f, 25f)
-
-                // Получение текущих координат
-                val coordinates = locationManager.getCurrentCoordinates()
-
-                // Формирование логов для батареи
-                val batteryLogMessage = if (coordinates.isNotEmpty()) {
-                    "Уровень заряда сумки: $simulatedBatteryLevel% @ $coordinates"
-                } else {
-                    "Уровень заряда сумки: $simulatedBatteryLevel% @ Координаты недоступны"
-                }
-
-                // Формирование логов для температуры
-                val upperTempLogMessage = "Температура верхнего отсека: ${upperCompartmentTemp}°C"
-                val lowerTempLogMessage = "Температура нижнего отсека: ${lowerCompartmentTemp}°C"
-
-                // Проверка и запись логов (только если событие еще не было зафиксировано)
-                if (loggedEvents.add(batteryLogMessage)) {
-                    LogModule.logEvent(context, batteryLogMessage)
-                    Log.d("SimulateLogs", batteryLogMessage)
-                }
-
-                if (loggedEvents.add(upperTempLogMessage)) {
-                    LogModule.logEventWithLocationAndLimit(
-                        context, bluetoothHelper, locationManager, upperTempLogMessage
-                    )
-                }
-
-                if (loggedEvents.add(lowerTempLogMessage)) {
-                    LogModule.logEventWithLocationAndLimit(
-                        context, bluetoothHelper, locationManager, lowerTempLogMessage
-                    )
-                }
-
-                // Завершаем цикл после логирования всех значений
-                if (loggedEvents.size >= 3) break
-            }
-
-            Log.d("SimulateLogs", "Тестирование логирования завершено.")
-        }
     }
 
 }
