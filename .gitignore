@@ -1,15 +1,28 @@
+# Игнорируем конфигурацию IDE
+.idea/
 *.iml
-.gradle
+
+# Игнорируем кеши сборки и артефакты Gradle
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Файлы зависимостей и локальных настроек
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+.gradle/
+/out/
+/build/
+
+# Файлы скриптов и сгенерированных данных
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Кэшированные файлы IntelliJ IDEA/Android Studio
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries
+.idea/vcs.xml
