@@ -92,15 +92,20 @@ object LogModule {
         lastLoggedEventTime[event] = currentTime
 
         val currentCoordinates = locationManager.getCurrentCoordinates()
-        val logMessage = if (currentCoordinates.isEmpty()) {
+
+        // 🔥 ИСПРАВЛЕНИЕ: правильная проверка координат
+        val logMessage = if (currentCoordinates == "Неизвестно" || currentCoordinates.isBlank()) {
             "$event @ Координаты недоступны"
         } else {
             "$event @ $currentCoordinates"
         }
 
-        LogModule.logEvent(context, logMessage)
-    }
+        logEvent(context, logMessage)
 
+        // Дополнительное логирование для отладки
+        Log.d("LogModule", "Координаты при логировании: '$currentCoordinates'")
+        Log.d("LogModule", "Финальное сообщение: $logMessage")
+    }
 
 //    fun logEventWithLocation(
 //        context: Context,

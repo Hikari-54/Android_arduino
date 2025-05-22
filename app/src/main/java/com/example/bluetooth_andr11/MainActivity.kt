@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
@@ -25,9 +27,11 @@ import com.example.bluetooth_andr11.permissions.PermissionHelper
 import com.example.bluetooth_andr11.ui.LogScreen
 import com.example.bluetooth_andr11.ui.MainScreen
 import com.example.bluetooth_andr11.ui.control.AppTopBar
+import com.example.bluetooth_andr11.ui.debug.DebugControlPanel
 import com.example.bluetooth_andr11.ui.theme.Bluetooth_andr11Theme
 import com.google.android.gms.location.LocationServices
 import org.osmdroid.config.Configuration
+import org.osmdroid.library.BuildConfig
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -71,6 +75,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    // 🔥 НОВОЕ: состояние для отображения панели отладки
+    private val showDebugPanel = mutableStateOf(false) // Изначально скрыта
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -112,11 +119,22 @@ class MainActivity : ComponentActivity() {
         }
 
         // Эмулируем данные от Arduino
-//        simulateTemperatureChanges(this, locationManager, bluetoothHelper)
-//        LogModule.logEventWithLocation(this, bluetoothHelper, locationManager, "Сумка закрыта")
+        //  simulateTemperatureChanges(this, locationManager, bluetoothHelper)
+        //  LogModule.logEventWithLocation(this, bluetoothHelper, locationManager, "Сумка закрыта")
+
+        // Принудительное обновление координат при запуске
+        locationManager.forceLocationUpdate()
+
+        // Проверка статуса GPS
+        if (!locationManager.isLocationAvailable()) {
+            Toast.makeText(this, "Получение координат...", Toast.LENGTH_SHORT).show()
+        }
 
         LogModule.logEvent(this, "Приложение запущено")
 
+        // 🔥 ДОБАВЬТЕ ЭТО ДЛЯ ОТЛАДКИ (временно):
+        Log.d("MainActivity", "DEBUG режим: ${BuildConfig.DEBUG}")
+        Log.d("MainActivity", "showDebugPanel: ${showDebugPanel.value}")
 
         setContent {
             Bluetooth_andr11Theme {
@@ -130,7 +148,36 @@ class MainActivity : ComponentActivity() {
 //                        bluetoothHelper = bluetoothHelper,
                         allPermissionsGranted = allPermissionsGranted.value,
                         onPermissionsClick = ::handlePermissionsIconClick,
-                        onBluetoothClick = ::handleConnectToDevice
+                        onBluetoothClick = ::handleConnectToDevice,
+                        onDebugClick = {
+                            showDebugPanel.value = !showDebugPanel.value
+                            Log.d("MainActivity", "Debug panel toggled: ${showDebugPanel.value}")
+                        },
+                        showDebugButton = true, // 🔥 ВАЖНО: передаем параметр, включающий отладку
+                        onTitleClick = {
+                            // Навигация к главному экрану
+                            navController.navigate("main_screen") {
+                                // Очищаем весь стек и делаем main_screen единственным экраном
+                                popUpTo(navController.graph.startDestinationId) {
+                                    inclusive = false
+                                }
+                                // Избегаем дублирования, если уже на главном экране
+                                launchSingleTop = true
+                            }
+
+                            // Скрываем панель отладки при возврате на главный экран
+                            showDebugPanel.value = false
+
+                            // Логируем для отладки
+//                            Log.d(
+//                                "MainActivity",
+//                                "Навигация к главному экрану по клику на заголовок"
+//                            )
+
+                            // Показываем feedback пользователю
+//                            Toast.makeText(this@MainActivity, "🏠 Главный экран", Toast.LENGTH_SHORT)
+//                                .show()
+                        }
                     )
                 }) { innerPadding ->
                     // Навигация между экранами
@@ -157,8 +204,28 @@ class MainActivity : ComponentActivity() {
                             LogScreen(navController = navController)
                         }
                     }
+
+                    // 🔥 НОВОЕ: Панель отладки
+                    if (showDebugPanel.value) {
+                        DebugControlPanel(
+                            bluetoothHelper = bluetoothHelper
+                        )
+                    }
                 }
             }
+        }
+    }
+
+    // 🔥 НОВОЕ: автоматический запуск симуляции в debug режиме
+    private fun autoStartSimulationIfNeeded() {
+        if (BuildConfig.DEBUG && !bluetoothHelper.isDeviceConnected) {
+            // Автоматически включаем симуляцию, если нет реального устройства
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!bluetoothHelper.isDeviceConnected) {
+                    bluetoothHelper.enableSimulationMode(true)
+                    Toast.makeText(this, "🔧 Запущена симуляция Arduino", Toast.LENGTH_LONG).show()
+                }
+            }, 3000) // Ждем 3 секунды для попытки реального подключения
         }
     }
 
@@ -285,40 +352,65 @@ class MainActivity : ComponentActivity() {
                 logBatteryThresholds(batteryValue)
 
                 // Логируем чистые данные от Arduino
-                Log.e("ArduinoData", "Данные от ардуино: $data")
+                Log.d("ArduinoData", "Данные от ардуино: $data")
 
-                // Парсим температуры
-                val upperTemp = parts[1].trim().toFloatOrNull()
-                val lowerTemp = parts[2].trim().toFloatOrNull()
+                // 🔥 УЛУЧШЕННЫЙ парсинг температур с обработкой "er"
+                val upperTempString = parts[1].trim()
+                val lowerTempString = parts[2].trim()
+
+                val upperTemp = if (upperTempString == "er") {
+                    Log.w("MainActivity", "Ошибка датчика верхнего отсека")
+                    null
+                } else {
+                    upperTempString.toFloatOrNull()
+                }
+
+                val lowerTemp = if (lowerTempString == "er") {
+                    Log.w("MainActivity", "Ошибка датчика нижнего отсека")
+                    null
+                } else {
+                    lowerTempString.toFloatOrNull()
+                }
 
                 logTemperatureWithBoundaries(upperTemp, lowerTemp)
 
-                // Обновляем интерфейс с текущими значениями
-                temp1.value = upperTemp?.toString() ?: temp1.value
-                temp2.value = lowerTemp?.toString() ?: temp2.value
+                // Обновляем интерфейс с текущими значениями или "Ошибка"
+                temp1.value = when {
+                    upperTempString == "er" -> "Ошибка"
+                    upperTemp != null -> upperTemp.toString()
+                    else -> temp1.value // Сохраняем старое значение
+                }
 
-                hallState.value = when (parts[3].trim()) {
+                temp2.value = when {
+                    lowerTempString == "er" -> "Ошибка"
+                    lowerTemp != null -> lowerTemp.toString()
+                    else -> temp2.value // Сохраняем старое значение
+                }
+
+                // 🔥 УЛУЧШЕННАЯ обработка состояния сумки
+                val closedState = parts[3].trim()
+                hallState.value = when (closedState) {
                     "1" -> {
                         logBagState("Сумка закрыта")
-//                        LogModule.logEventWithLocationAndLimit(
-//                            this, bluetoothHelper, locationManager, "Сумка закрыта", noRepeat = true
-//                        )
                         "Закрыт"
                     }
 
                     "0" -> {
                         logBagState("Сумка открыта")
-
-//                        LogModule.logEventWithLocationAndLimit(
-//                            this, bluetoothHelper, locationManager, "Сумка открыта", noRepeat = true
-//                        )
                         "Открыт"
                     }
 
-                    else -> "Неизвестно"
+                    else -> {
+                        Log.w("MainActivity", "Неизвестное состояние датчика Холла: $closedState")
+                        "Неизвестно"
+                    }
                 }
-                functionState.value = parts[4].trim()
 
+                // 🔥 НОВОЕ: Синхронизация состояния функций с Arduino
+                val arduinoState = parts[4].trim().toIntOrNull() ?: 0
+                syncStateWithArduino(arduinoState)
+
+                // Обработка акселерометра
                 val accelerometerValue = parts[5].trim().toFloatOrNull() ?: 0.0f
                 val shakeCategory = when {
                     accelerometerValue > 2.5 || accelerometerValue < -2.5 -> {
@@ -326,9 +418,9 @@ class MainActivity : ComponentActivity() {
                             this,
                             bluetoothHelper,
                             locationManager,
-                            "Экстремальная тряска (${accelerometerValue})"
+                            "Экстремальная тряска (${String.format("%.2f", accelerometerValue)})"
                         )
-                        "Экстремальная тряска (${accelerometerValue})"
+                        "Экстремальная тряска (${String.format("%.2f", accelerometerValue)})"
                     }
 
                     accelerometerValue > 1.0 || accelerometerValue < -1.0 -> {
@@ -336,34 +428,28 @@ class MainActivity : ComponentActivity() {
                             this,
                             bluetoothHelper,
                             locationManager,
-                            "Сильная тряска (${accelerometerValue})"
+                            "Сильная тряска (${String.format("%.2f", accelerometerValue)})"
                         )
-                        "Сильная тряска (${accelerometerValue})"
+                        "Сильная тряска (${String.format("%.2f", accelerometerValue)})"
                     }
 
-                    accelerometerValue > 0.5 || accelerometerValue < -0.5 -> "Слабая тряска (${accelerometerValue})"
-                    else -> "В покое (${accelerometerValue})"
+                    accelerometerValue > 0.5 || accelerometerValue < -0.5 ->
+                        "Слабая тряска (${String.format("%.2f", accelerometerValue)})"
+
+                    else ->
+                        "В покое (${String.format("%.2f", accelerometerValue)})"
                 }
 
                 accelerometerData.value = shakeCategory
 
-                // Логируем каждые 10% изменения заряда
-//                if (lastLoggedBatteryLevel == -1 || batteryPercent.value <= lastLoggedBatteryLevel - 10) {
-//                    lastLoggedBatteryLevel = batteryPercent.value
-//                    LogModule.logEventWithLocation(
-//                        this,
-//                        bluetoothHelper,
-//                        locationManager,
-//                        "Уровень заряда сумки: ${batteryPercent.value}%"
-//                    )
-//                }
             } else {
-                Log.e("MainActivity", "Некорректный формат данных: $data")
-                Toast.makeText(this, "Некорректный формат данных: $data", Toast.LENGTH_SHORT).show()
+                Log.e(
+                    "MainActivity",
+                    "Некорректный формат данных: $data (ожидается 6 параметров, получено ${parts.size})"
+                )
             }
         } catch (e: Exception) {
-            Log.e("MainActivity", "Ошибка парсинга данных: ${e.message}")
-            Toast.makeText(this, "Ошибка парсинга данных: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e("MainActivity", "Ошибка парсинга данных: ${e.message}, данные: $data")
         }
     }
 
@@ -377,6 +463,17 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.d("BagStateLog", "Состояние сумки не изменилось, логирование пропущено.")
         }
+    }
+
+    // 🔥 НОВАЯ функция для синхронизации состояния
+    private fun syncStateWithArduino(arduinoState: Int) {
+        // В зависимости от логики Arduino, можно попытаться определить активные функции
+        // Это примерная логика - нужно адаптировать под фактическое поведение Arduino
+
+        Log.d("MainActivity", "Состояние Arduino: $arduinoState")
+
+        // Пока что просто логируем для отладки
+        // TODO: Реализовать логику синхронизации после уточнения протокола Arduino
     }
 
     // Проверка допустимого изменения температуры

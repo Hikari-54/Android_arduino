@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Looper
+import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -21,6 +22,8 @@ class LocationManager(
 
     init {
         setupLocationCallback()
+        // Пытаемся получить последнее известное местоположение при инициализации
+        getLastKnownLocation()
     }
 
     private fun setupLocationCallback() {
@@ -29,14 +32,38 @@ class LocationManager(
                 locationResult.lastLocation?.let { location ->
                     val coordinates = "${location.latitude}, ${location.longitude}"
                     locationCoordinates.value = coordinates
+                    Log.d("LocationManager", "Новые координаты получены: $coordinates")
                 }
             }
         }
     }
 
+    // 🔥 НОВОЕ: Получение последнего известного местоположения
+    private fun getLastKnownLocation() {
+        if (!hasLocationPermission()) {
+            Log.w("LocationManager", "Нет разрешения на местоположение")
+            return
+        }
+
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let {
+                    val coordinates = "${it.latitude}, ${it.longitude}"
+                    locationCoordinates.value = coordinates
+                    Log.d("LocationManager", "Последнее известное местоположение: $coordinates")
+                }
+            }.addOnFailureListener { e ->
+                Log.e("LocationManager", "Ошибка получения последнего местоположения: ${e.message}")
+            }
+        } catch (e: SecurityException) {
+            Log.e("LocationManager", "SecurityException при получении последнего местоположения: ${e.message}")
+        }
+    }
+
     private fun createLocationRequest(): LocationRequest {
-        return LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 60000).apply {
-            setMinUpdateIntervalMillis(30000) // Updated to ensure faster interval
+        return LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 30000).apply {
+            setMinUpdateIntervalMillis(15000) // Более частые обновления
+            setMaxUpdateDelayMillis(60000)
         }.build()
     }
 
@@ -48,8 +75,7 @@ class LocationManager(
 
     fun startLocationUpdates(onLocationUpdated: (String) -> Unit) {
         if (!hasLocationPermission()) {
-            // Уведомляем, если отсутствуют разрешения
-            println("Permissions for location are missing")
+            Log.w("LocationManager", "Нет разрешений на местоположение")
             return
         }
 
@@ -67,6 +93,7 @@ class LocationManager(
                     val coordinates = "${location.latitude}, ${location.longitude}"
                     locationCoordinates.value = coordinates
                     onLocationUpdated(coordinates)
+                    Log.d("LocationManager", "Обновлены координаты: $coordinates")
                 }
             }
         }
@@ -77,14 +104,41 @@ class LocationManager(
                 locationRequest, locationCallback!!, Looper.getMainLooper()
             )
             isUpdatingLocation = true
+            Log.d("LocationManager", "Запущены обновления местоположения")
         } catch (e: SecurityException) {
-            println("Location permission is missing or denied: ${e.message}")
+            Log.e("LocationManager", "SecurityException при запуске обновлений: ${e.message}")
         }
     }
 
     fun getCurrentCoordinates(): String {
-        return locationCoordinates.value
+        val coordinates = locationCoordinates.value
+        Log.d("LocationManager", "Запрошены текущие координаты: '$coordinates'")
+        return coordinates
     }
 
+    // 🔥 НОВОЕ: Принудительное обновление местоположения
+    fun forceLocationUpdate() {
+        if (!hasLocationPermission()) return
 
+        try {
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener { location ->
+                    location?.let {
+                        val coordinates = "${it.latitude}, ${it.longitude}"
+                        locationCoordinates.value = coordinates
+                        Log.d("LocationManager", "Принудительно получены координаты: $coordinates")
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.e("LocationManager", "Ошибка принудительного получения координат: ${e.message}")
+                }
+        } catch (e: SecurityException) {
+            Log.e("LocationManager", "SecurityException при принудительном обновлении: ${e.message}")
+        }
+    }
+
+    // 🔥 НОВОЕ: Проверка готовности к получению координат
+    fun isLocationAvailable(): Boolean {
+        return locationCoordinates.value != "Неизвестно"
+    }
 }

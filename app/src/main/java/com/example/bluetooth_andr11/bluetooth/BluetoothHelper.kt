@@ -16,6 +16,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
+import com.example.bluetooth_andr11.ArduinoSimulator
 import com.example.bluetooth_andr11.MainActivity
 import com.example.bluetooth_andr11.location.LocationManager
 import com.example.bluetooth_andr11.log.LogModule
@@ -43,9 +44,23 @@ class BluetoothHelper(private val context: Context) {
 
     private var dialogShown = false // Чтобы не показывать диалог слишком часто
 
-    // Check if Bluetooth is enabled
-    val isDeviceConnected: Boolean
-        get() = isConnected
+    // 🔥 НОВЫЕ поля для отслеживания состояния
+    private var simulationMode = false
+    private var arduinoSimulator: ArduinoSimulator? = null
+    private var currentScenario = ArduinoSimulator.SimulationScenario.NORMAL
+
+    // SharedPreferences для сохранения состояния
+    private val sharedPrefs =
+        context.getSharedPreferences("bluetooth_helper_prefs", Context.MODE_PRIVATE)
+
+    init {
+        // Восстанавливаем состояние при создании
+        restoreSimulationState()
+    }
+
+    // 🔥 НОВЫЕ методы для получения состояния
+    fun isSimulationEnabled(): Boolean = simulationMode
+    fun getCurrentScenario(): ArduinoSimulator.SimulationScenario = currentScenario
 
     // Получить список сопряженных устройств
     private fun getPairedDevices(): Set<BluetoothDevice>? {
@@ -85,7 +100,6 @@ class BluetoothHelper(private val context: Context) {
             dialogShown = false // Сбрасываем флаг
         }
     }
-
 
     fun showDeviceSelectionDialog(context: Context, onDeviceSelected: (BluetoothDevice) -> Unit) {
         val pairedDevices = try {
@@ -206,98 +220,6 @@ class BluetoothHelper(private val context: Context) {
         }
     }
 
-
-    // Подключиться к устройству
-//    fun connectToDevice(device: BluetoothDevice, onConnectionResult: (Boolean, String) -> Unit) {
-//        if (!hasBluetoothPermission()) {
-//            onConnectionResult(false, "Разрешения Bluetooth отсутствуют")
-//            return
-//        }
-//
-//        // Проверяем наличие UUID у устройства
-//        val uuid = try {
-//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-//                if (ContextCompat.checkSelfPermission(
-//                        context, Manifest.permission.BLUETOOTH_CONNECT
-//                    ) == PackageManager.PERMISSION_GRANTED
-//                ) {
-//                    device.uuids?.firstOrNull()?.uuid ?: UUID.randomUUID()
-//                } else {
-//                    onConnectionResult(false, "Разрешения BLUETOOTH_CONNECT отсутствуют")
-//                    return
-//                }
-//            } else {
-//                device.uuids?.firstOrNull()?.uuid ?: UUID.randomUUID()
-//            }
-//        } catch (e: SecurityException) {
-//            Log.e("BluetoothHelper", "Ошибка доступа к UUID: ${e.message}")
-//            onConnectionResult(false, "Ошибка доступа к UUID")
-//            return
-//        }
-//
-//        // Запускаем сопряжение в отдельной корутине
-//        CoroutineScope(Dispatchers.IO).launch {
-//            try {
-//                bluetoothSocket = try {
-//                    device.createRfcommSocketToServiceRecord(uuid)
-//                } catch (e: SecurityException) {
-//                    Log.e("BluetoothHelper", "Ошибка создания сокета: ${e.message}")
-//                    withContext(Dispatchers.Main) {
-//                        onConnectionResult(false, "Ошибка создания сокета")
-//                    }
-//                    return@launch
-//                }
-//
-//                // Проверка разрешения перед вызовом connect()
-//                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-//                    if (ContextCompat.checkSelfPermission(
-//                            context, Manifest.permission.BLUETOOTH_CONNECT
-//                        ) != PackageManager.PERMISSION_GRANTED
-//                    ) {
-//                        withContext(Dispatchers.Main) {
-//                            onConnectionResult(false, "Разрешения BLUETOOTH_CONNECT отсутствуют")
-//                        }
-//                        return@launch
-//                    }
-//                }
-//
-//                bluetoothSocket?.connect()
-//
-//                inputStream = bluetoothSocket?.inputStream
-//                outputStream = bluetoothSocket?.outputStream
-//                isConnected = true
-//
-//                withContext(Dispatchers.Main) {
-//                    onConnectionResult(
-//                        true, "Подключено к ${device.name ?: "Неизвестное устройство"}"
-//                    )
-//                    startListeningForData()
-//                }
-//            } catch (e: IOException) {
-//                Log.e("BluetoothHelper", "Ошибка подключения: ${e.message}")
-//                isConnected = false
-//                withContext(Dispatchers.Main) {
-//                    onConnectionResult(false, "Ошибка подключения: ${e.message}")
-//                }
-//                closeConnection()
-//            }
-//        }
-//    }
-
-    // Send command to connected device
-    fun sendCommand(command: String) {
-        if (!isConnected || outputStream == null) {
-            Log.e("BluetoothHelper", "Not connected or output stream unavailable")
-            return
-        }
-
-        try {
-            outputStream?.write(command.toByteArray())
-        } catch (e: IOException) {
-            Log.e("BluetoothHelper", "Error sending command: ${e.message}")
-        }
-    }
-
     // Listen for incoming data from the connected device
     fun listenForData(onDataReceived: (String) -> Unit) {
         if (!isConnected || inputStream == null || isListening) {
@@ -346,18 +268,6 @@ class BluetoothHelper(private val context: Context) {
             }
         }
     }
-
-
-    private fun startListeningForData() {
-        if (isConnected && inputStream != null && !isListening) {
-            listenForData { data ->
-                Log.d("BluetoothHelper", "Полученные данные: $data")
-            }
-        } else {
-            Log.e("BluetoothHelper", "Не удалось начать прослушивание: устройство не подключено")
-        }
-    }
-
 
     // Close the Bluetooth connection
     fun closeConnection() {
@@ -457,7 +367,6 @@ class BluetoothHelper(private val context: Context) {
         context.registerReceiver(receiver, filter)
     }
 
-
     private fun logBluetoothEvent(
         context: Context, locationManager: LocationManager, event: String
     ) {
@@ -472,7 +381,6 @@ class BluetoothHelper(private val context: Context) {
             LogModule.logEvent(context, logMessage)
         }
     }
-
 
     private fun showDeviceSelection(context: Context?) {
         (context as? ComponentActivity)?.runOnUiThread {
@@ -490,5 +398,156 @@ class BluetoothHelper(private val context: Context) {
 
     fun isBluetoothEnabled(): Boolean {
         return bluetoothAdapter?.isEnabled == true
+    }
+
+    // ========================================================================
+    // 🔥 МЕТОДЫ ДЛЯ СИМУЛЯЦИИ
+
+    // 🔥 УЛУЧШЕННЫЙ метод включения симуляции с сохранением состояния
+    fun enableSimulationMode(enable: Boolean) {
+        simulationMode = enable
+
+        // Сохраняем состояние
+        sharedPrefs.edit()
+            .putBoolean("simulation_enabled", enable)
+            .apply()
+
+        if (enable) {
+            Log.d("BluetoothHelper", "Включен режим симуляции Arduino")
+            startArduinoSimulation()
+        } else {
+            Log.d("BluetoothHelper", "Выключен режим симуляции Arduino")
+            stopArduinoSimulation()
+        }
+    }
+
+    private fun startArduinoSimulation() {
+        arduinoSimulator = ArduinoSimulator { data ->
+            // Передаем данные как если бы они пришли от реального Arduino
+            (context as? MainActivity)?.handleReceivedData(data)
+        }
+        arduinoSimulator?.startSimulation()
+
+        // Симулируем подключение устройства
+        isConnected = true
+    }
+
+    private fun stopArduinoSimulation() {
+        arduinoSimulator?.stopSimulation()
+        arduinoSimulator = null
+
+        if (simulationMode) {
+            isConnected = false
+        }
+    }
+
+    // 🔥 УЛУЧШЕННЫЙ метод установки сценария с сохранением
+    fun setSimulationScenario(scenario: ArduinoSimulator.SimulationScenario) {
+        currentScenario = scenario
+
+        // Сохраняем текущий сценарий
+        sharedPrefs.edit()
+            .putString("current_scenario", scenario.name)
+            .apply()
+
+        arduinoSimulator?.setScenario(scenario)
+        Log.d("BluetoothHelper", "Установлен сценарий: $scenario")
+    }
+
+    // 🔥 НОВЫЙ метод восстановления состояния
+    private fun restoreSimulationState() {
+        val savedSimulationEnabled = sharedPrefs.getBoolean("simulation_enabled", false)
+        val savedScenarioName = sharedPrefs.getString(
+            "current_scenario",
+            ArduinoSimulator.SimulationScenario.NORMAL.name
+        )
+
+        try {
+            currentScenario =
+                ArduinoSimulator.SimulationScenario.valueOf(savedScenarioName ?: "NORMAL")
+        } catch (e: IllegalArgumentException) {
+            currentScenario = ArduinoSimulator.SimulationScenario.NORMAL
+        }
+
+        if (savedSimulationEnabled) {
+            enableSimulationMode(true)
+        }
+
+        Log.d(
+            "BluetoothHelper",
+            "Восстановлено состояние: симуляция=$savedSimulationEnabled, сценарий=$currentScenario"
+        )
+    }
+
+    // 🔥 НОВЫЙ метод получения информации о сценарии
+    fun getScenarioInfo(): ScenarioInfo {
+        return when (currentScenario) {
+            ArduinoSimulator.SimulationScenario.NORMAL ->
+                ScenarioInfo("Обычная работа", "⚪", "Стабильные показатели", 60)
+
+            ArduinoSimulator.SimulationScenario.BATTERY_DRAIN ->
+                ScenarioInfo("Разрядка батареи", "🔋", "Быстрая потеря заряда", 30)
+
+            ArduinoSimulator.SimulationScenario.HEATING_CYCLE ->
+                ScenarioInfo("Цикл нагрева", "🔥", "Нагрев до 52°C", 45)
+
+            ArduinoSimulator.SimulationScenario.COOLING_CYCLE ->
+                ScenarioInfo("Цикл охлаждения", "❄️", "Охлаждение до 4°C", 45)
+
+            ArduinoSimulator.SimulationScenario.BAG_OPENING_CLOSING ->
+                ScenarioInfo("Открытие сумки", "📦", "Частые переключения", 40)
+
+            ArduinoSimulator.SimulationScenario.STRONG_SHAKING ->
+                ScenarioInfo("Сильная тряска", "📳", "Экстремальные колебания", 35)
+
+            ArduinoSimulator.SimulationScenario.SENSOR_ERRORS ->
+                ScenarioInfo("Ошибки датчиков", "⚠️", "Периодические сбои", 50)
+        }
+    }
+
+    // 🔥 НОВЫЙ data class для информации о сценарии
+    data class ScenarioInfo(
+        val name: String,
+        val icon: String,
+        val description: String,
+        val durationSeconds: Int
+    )
+
+    // 🔥 МОДИФИЦИРОВАННЫЙ метод отправки команд
+    fun sendCommand(command: String) {
+        if (simulationMode && arduinoSimulator != null) {
+            Log.d("BluetoothHelper", "Симуляция команды Arduino: $command")
+            arduinoSimulator?.handleCommand(command)
+            return
+        }
+
+        // Оригинальная логика отправки команд
+        if (!isConnected || outputStream == null) {
+            Log.e("BluetoothHelper", "Not connected or output stream unavailable")
+            return
+        }
+
+        try {
+            outputStream?.write(command.toByteArray())
+        } catch (e: IOException) {
+            Log.e("BluetoothHelper", "Error sending command: ${e.message}")
+        }
+    }
+
+    // 🔥 ПЕРЕОПРЕДЕЛЕННОЕ свойство для симуляции
+    val isDeviceConnected: Boolean
+        get() = if (simulationMode) true else isConnected
+
+    // 🔥 НОВЫЕ методы для управления симулятором
+    fun setSimulationBattery(level: Int) {
+        arduinoSimulator?.setBatteryLevel(level)
+    }
+
+    fun setSimulationTemperatures(upper: Float, lower: Float) {
+        arduinoSimulator?.setTemperatures(upper, lower)
+    }
+
+    fun triggerSimulationShake(intensity: Float) {
+        arduinoSimulator?.triggerShake(intensity)
     }
 }
