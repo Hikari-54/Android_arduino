@@ -17,17 +17,26 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import com.example.bluetooth_andr11.map.MapModule
+import org.osmdroid.util.GeoPoint
 
 @Composable
 fun MapModal(
-    context: Context, coordinates: Pair<Double, Double>, onDismiss: () -> Unit, eventTitle: String
+    context: Context,
+    coordinates: Pair<Double, Double>,
+    onDismiss: () -> Unit,
+    eventTitle: String
 ) {
     Dialog(onDismissRequest = { onDismiss() }) {
         Box(
@@ -53,16 +62,21 @@ fun MapModal(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = eventTitle, modifier = Modifier.weight(1f), fontSize = 18.sp, color = Color.Black,
+                            text = eventTitle,
+                            modifier = Modifier.weight(1f),
+                            fontSize = 18.sp,
+                            color = Color.Black,
                         )
-                        Icon(imageVector = Icons.Default.Close,
+                        Icon(
+                            imageVector = Icons.Default.Close,
                             contentDescription = "Закрыть",
                             modifier = Modifier
                                 .size(24.dp)
-                                .clickable { onDismiss() })
+                                .clickable { onDismiss() }
+                        )
                     }
 
-                    // Отображение карты
+                    // 🔥 ИСПРАВЛЕНО: Отображение карты с маркером
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -70,7 +84,7 @@ fun MapModal(
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color.LightGray)
                     ) {
-                        MapOverlay(
+                        EventMapView(
                             context = context,
                             coordinates = coordinates,
                             modifier = Modifier.fillMaxSize()
@@ -80,4 +94,49 @@ fun MapModal(
             }
         }
     }
+}
+
+// 🔥 НОВЫЙ компонент для отображения карты события
+@Composable
+fun EventMapView(
+    context: Context,
+    coordinates: Pair<Double, Double>,
+    modifier: Modifier = Modifier
+) {
+    // Создаем новый экземпляр карты для события
+    val mapView = remember {
+        MapModule.initializeMap(context).apply {
+            // Убираем пользовательский оверлей для карты событий
+            overlays.clear()
+        }
+    }
+
+    // Настройка карты для события
+    LaunchedEffect(coordinates) {
+        val (latitude, longitude) = coordinates
+        val geoPoint = GeoPoint(latitude, longitude)
+
+        // Центрируем карту на событии
+        mapView.controller.setCenter(geoPoint)
+        mapView.controller.setZoom(16.0) // Более детальный зум
+
+        // Добавляем маркер события
+        MapModule.addMarker(mapView, latitude, longitude)
+
+        // Принудительно обновляем карту
+        mapView.invalidate()
+    }
+
+    // Очистка при уничтожении
+    DisposableEffect(Unit) {
+        onDispose {
+            mapView.overlays.clear()
+        }
+    }
+
+    // Отображение карты
+    AndroidView(
+        factory = { mapView },
+        modifier = modifier
+    )
 }

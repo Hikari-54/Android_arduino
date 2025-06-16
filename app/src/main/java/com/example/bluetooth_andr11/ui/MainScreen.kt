@@ -10,18 +10,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
-import com.example.bluetooth_andr11.location.LocationManager
+import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.ui.control.ControlPanel
-
 
 @Composable
 fun MainScreen(
@@ -30,15 +31,14 @@ fun MainScreen(
     temp1: String,
     temp2: String,
     hallState: String,
-//    functionState: String,
-//    coordinates: String,
     acc: String,
     onNavigateToLogs: () -> Unit,
     bluetoothHelper: BluetoothHelper,
-    locationManager: LocationManager
+    locationManager: EnhancedLocationManager
 ) {
-    // Используем rememberSaveable для сохранения состояния между переходами
-//    val context = LocalContext.current
+    // 🔥 ПРАВИЛЬНЫЙ способ получения context в Compose
+    val context = LocalContext.current
+
     val isHeatOn = rememberSaveable { mutableStateOf(false) }
     val isCoolOn = rememberSaveable { mutableStateOf(false) }
     val isLightOn = rememberSaveable { mutableStateOf(false) }
@@ -47,8 +47,6 @@ fun MainScreen(
         modifier = modifier.fillMaxSize()
     ) {
         val screenHeight = maxHeight
-
-        // Карта занимает адаптивную часть экрана
         val mapHeight = if (screenHeight > 600.dp) 300.dp else screenHeight * 0.4f
 
         LazyColumn(
@@ -80,12 +78,11 @@ fun MainScreen(
                     temp1 = temp1,
                     temp2 = temp2,
                     hallState = hallState,
-//                    coordinates = coordinates,
                     acc = acc,
                     isHeatOn = isHeatOn,
                     isCoolOn = isCoolOn,
                     isLightOn = isLightOn,
-                    context = LocalContext.current,
+                    context = context, // ← ПРАВИЛЬНЫЙ context
                     bluetoothHelper = bluetoothHelper,
                     locationManager = locationManager
                 )
@@ -103,5 +100,12 @@ fun MainScreen(
             }
         }
     }
+
+    // 🔥 Функция для стилизации кнопок
+    @Composable
+    fun customButtonColors() = ButtonDefaults.buttonColors(
+        containerColor = Color(0xFF252525),
+        contentColor = Color.White
+    )
 }
 

@@ -1,5 +1,6 @@
 package com.example.bluetooth_andr11.ui.debug
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,34 +28,39 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.ArduinoSimulator
+import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
+import com.example.bluetooth_andr11.location.EnhancedLocationManager
+import com.example.bluetooth_andr11.ui.location.LocationDiagnostics
+import com.example.bluetooth_andr11.ui.location.LocationStatusWidget
 import kotlinx.coroutines.delay
 
 @Composable
 fun DebugControlPanel(
     bluetoothHelper: BluetoothHelper,
+    locationManager: EnhancedLocationManager, // 🔥 Используем EnhancedLocationManager напрямую
     modifier: Modifier = Modifier
 ) {
-    // 🔥 СИНХРОНИЗИРОВАННОЕ состояние с BluetoothHelper
+    val context = LocalContext.current
+
+    // Существующие состояния...
     var isSimulationEnabled by remember { mutableStateOf(bluetoothHelper.isSimulationEnabled()) }
     var currentScenario by remember { mutableStateOf(bluetoothHelper.getCurrentScenario()) }
     var scenarioInfo by remember { mutableStateOf(bluetoothHelper.getScenarioInfo()) }
 
-    // Остальные состояния
-    var batteryLevel by remember { mutableIntStateOf(85) }
-    var upperTemp by remember { mutableFloatStateOf(25.0f) }
-    var lowerTemp by remember { mutableFloatStateOf(15.0f) }
-    var shakeIntensity by remember { mutableFloatStateOf(0.1f) }
+    // 🔥 Состояния для местоположения
+    var showLocationDiagnostics by remember { mutableStateOf(false) }
+    var currentLocationMode by remember { mutableStateOf(EnhancedLocationManager.LocationMode.BALANCED) }
 
-    // 🔥 НОВОЕ: Прогресс выполнения сценария
+    // Прогресс сценария
     var scenarioProgress by remember { mutableFloatStateOf(0f) }
     var timeRemaining by remember { mutableIntStateOf(0) }
 
-    // 🔥 Обновление прогресса сценария
+    // Обновление прогресса сценария
     LaunchedEffect(currentScenario, isSimulationEnabled) {
         if (isSimulationEnabled) {
             val totalDuration = scenarioInfo.durationSeconds
@@ -90,7 +96,7 @@ fun DebugControlPanel(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "🔧 Панель отладки Arduino",
+                text = "🔧 Панель отладки",
                 style = MaterialTheme.typography.titleLarge,
                 color = Color.White,
                 fontWeight = FontWeight.Bold
@@ -98,7 +104,147 @@ fun DebugControlPanel(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 🔥 УЛУЧШЕННЫЙ переключатель симуляции
+            // 🔥 Виджет статуса местоположения
+            LocationStatusWidget(
+                locationManager = locationManager,
+                onModeChange = { mode ->
+                    currentLocationMode = mode
+                    locationManager.setLocationMode(mode)
+                    Toast.makeText(
+                        context,
+                        "Режим изменен на: ${mode.name}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 🔥 ОБНОВЛЕННЫЕ кнопки управления местоположением
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        locationManager.forceLocationUpdate(EnhancedLocationManager.LocationMode.HIGH_ACCURACY)
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🎯", fontSize = 16.sp)
+                        Text("GPS", fontSize = 10.sp)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        locationManager.forceLocationUpdate(EnhancedLocationManager.LocationMode.NETWORK_ONLY)
+                        Toast.makeText(
+                            context,
+                            "Принудительный запрос Network location",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("📶", fontSize = 16.sp)
+                        Text("Network", fontSize = 10.sp)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        // 🔥 НОВОЕ: Кнопка для принудительного запроса Wi-Fi местоположения
+                        locationManager.setLocationMode(EnhancedLocationManager.LocationMode.LOW_POWER)
+                        locationManager.forceLocationUpdate(EnhancedLocationManager.LocationMode.LOW_POWER)
+                        Toast.makeText(
+                            context,
+                            "Принудительный Wi-Fi positioning",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("📡", fontSize = 16.sp)
+                        Text("Wi-Fi", fontSize = 10.sp)
+                    }
+                }
+            }
+
+            // 🔥 НОВЫЙ ряд дополнительных кнопок
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        showLocationDiagnostics = !showLocationDiagnostics
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (showLocationDiagnostics) Color(0xFFFF9800) else Color(
+                            0xFF757575
+                        )
+                    )
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🔍", fontSize = 16.sp)
+                        Text("Диагностика", fontSize = 10.sp)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        // 🔥 НОВОЕ: Сброс и повторная инициализация
+                        locationManager.setLocationMode(EnhancedLocationManager.LocationMode.BALANCED)
+                        Toast.makeText(context, "Сброс к режиму BALANCED", Toast.LENGTH_SHORT)
+                            .show()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🔄", fontSize = 16.sp)
+                        Text("Сброс", fontSize = 10.sp)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        // 🔥 НОВОЕ: Проверка всех доступных провайдеров
+                        val status = locationManager.getLocationStatus()
+                        val message = "GPS: ${if (status.isGpsEnabled) "✅" else "❌"}, " +
+                                "Network: ${if (status.isNetworkEnabled) "✅" else "❌"}, " +
+                                "Разрешения: ${if (status.hasPermission) "✅" else "❌"}"
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF607D8B))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("ℹ️", fontSize = 16.sp)
+                        Text("Статус", fontSize = 10.sp)
+                    }
+                }
+            }
+
+            // 🔥 Панель диагностики (раскрывающаяся)
+            if (showLocationDiagnostics) {
+                Spacer(modifier = Modifier.height(12.dp))
+                LocationDiagnostics(locationManager = locationManager)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Переключатель симуляции Arduino
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -106,7 +252,7 @@ fun DebugControlPanel(
             ) {
                 Column {
                     Text(
-                        text = "Режим симуляции",
+                        text = "Режим симуляции Arduino",
                         color = Color.White,
                         fontWeight = FontWeight.Medium
                     )
@@ -132,7 +278,7 @@ fun DebugControlPanel(
             if (isSimulationEnabled) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 🔥 НОВОЕ: Информация о текущем сценарии
+                // Информация о текущем сценарии
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))
@@ -181,7 +327,7 @@ fun DebugControlPanel(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 🔥 КОМПАКТНЫЕ сценарии тестирования
+                // Компактные сценарии тестирования
                 Text(
                     text = "Быстрые сценарии:",
                     color = Color.White,
@@ -291,7 +437,6 @@ fun DebugControlPanel(
                 ) {
                     Button(
                         onClick = {
-                            batteryLevel = 5
                             bluetoothHelper.setSimulationBattery(5)
                         },
                         modifier = Modifier.weight(1f),
@@ -302,8 +447,7 @@ fun DebugControlPanel(
 
                     Button(
                         onClick = {
-                            upperTemp = 55f
-                            bluetoothHelper.setSimulationTemperatures(55f, lowerTemp)
+                            bluetoothHelper.setSimulationTemperatures(55f, 15f)
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))

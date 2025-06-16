@@ -1,6 +1,7 @@
 package com.example.bluetooth_andr11
 
 import android.util.Log
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,15 +15,15 @@ class ArduinoSimulator(
     private var simulationJob: Job? = null
     private var isRunning = false
 
-    // Симулируемые состояния
-    private var batteryLevel = 85
-    private var upperTemp = 25.0f
-    private var lowerTemp = 15.0f
-    private var bagClosed = false
-    private var heatActive = false
-    private var coolActive = false
-    private var lightActive = false
-    private var shakeLevel = 0.1f
+    // Симулируемые состояния (соответствуют Arduino)
+    private var batteryPercent = 85          // batteryPercent в Arduino
+    private var tempHot = 25.0f              // tempHot (верхний отсек)
+    private var tempCold = 15.0f             // tempCold (нижний отсек)
+    private var bagClosed = false            // состояние сумки
+    private var isHeatActive = false         // состояние нагрева
+    private var coolActive = false           // состояние охлаждения
+    private var lightActive = false          // состояние света
+    private var overload = 0.1f              // overload (акселерометр)
 
     // Сценарии для тестирования
     private var currentScenario = SimulationScenario.NORMAL
@@ -47,8 +48,9 @@ class ArduinoSimulator(
 
             while (isRunning) {
                 val data = generateData()
-                onDataReceived(data)
-                delay(1000) // Отправляем данные каждую секунду
+                // 🔥 ВАЖНО: Добавляем \n как делает Arduino через println
+                onDataReceived("$data\n")
+                delay(300) // Отправляем данные каждые 300мс как в Arduino
             }
         }
     }
@@ -59,44 +61,55 @@ class ArduinoSimulator(
         Log.d("ArduinoSimulator", "Симуляция Arduino остановлена")
     }
 
-    // 🔥 ОБНОВЛЕННЫЙ метод для автоматического переключения сценария
     fun setScenario(scenario: SimulationScenario) {
         currentScenario = scenario
         scenarioStep = 0 // Сброс счетчика
         Log.d("ArduinoSimulator", "Переключен сценарий: $scenario")
     }
 
-    // Симуляция команд от приложения
+    // Симуляция команд от приложения (точно как в Arduino)
     fun handleCommand(command: String) {
         when (command) {
             "H" -> {
-                heatActive = true
-                Log.d("ArduinoSimulator", "Нагрев включен")
+                Log.d("ArduinoSimulator", "HEAT ON")
+                isHeatActive = true
             }
 
             "h" -> {
-                heatActive = false
-                Log.d("ArduinoSimulator", "Нагрев выключен")
+                Log.d("ArduinoSimulator", "HEAT OFF")
+                isHeatActive = false
             }
 
             "C" -> {
+                Log.d("ArduinoSimulator", "COOL ON")
                 coolActive = true
-                Log.d("ArduinoSimulator", "Охлаждение включено")
             }
 
             "c" -> {
+                Log.d("ArduinoSimulator", "COOL OFF")
                 coolActive = false
-                Log.d("ArduinoSimulator", "Охлаждение выключено")
             }
 
             "L" -> {
-                lightActive = true
-                Log.d("ArduinoSimulator", "Свет включен")
+                if (!lightActive) {
+                    Log.d("ArduinoSimulator", "LIGHT ON")
+                    lightActive = true
+                } else {
+                    Log.d("ArduinoSimulator", "LIGHT уже включена")
+                }
             }
 
             "l" -> {
-                lightActive = false
-                Log.d("ArduinoSimulator", "Свет выключен")
+                if (lightActive) {
+                    Log.d("ArduinoSimulator", "LIGHT OFF")
+                    lightActive = false
+                } else {
+                    Log.d("ArduinoSimulator", "LIGHT уже выключена")
+                }
+            }
+
+            else -> {
+                Log.d("ArduinoSimulator", "Unknown command: $command")
             }
         }
     }
@@ -104,24 +117,42 @@ class ArduinoSimulator(
     private fun generateData(): String {
         updateSimulationState()
 
-        val battery = batteryLevel.coerceIn(0, 100)
-        val temp1 =
-            if (currentScenario == SimulationScenario.SENSOR_ERRORS && scenarioStep % 10 < 3) {
-                "er"
-            } else {
-                String.format("%.1f", upperTemp)
-            }
-        val temp2 =
-            if (currentScenario == SimulationScenario.SENSOR_ERRORS && scenarioStep % 7 < 2) {
-                "er"
-            } else {
-                String.format("%.1f", lowerTemp)
-            }
-        val closed = if (bagClosed) 1 else 0
-        val state = calculateState()
-        val shake = String.format("%.2f", shakeLevel)
+        // 1. Battery percent (0-100)
+        val battery = batteryPercent.coerceIn(0, 100)
 
-        return "$battery,$temp1,$temp2,$closed,$state,$shake"
+        // 2. Hot temperature (upper compartment) - может быть "er" при ошибке
+        val temp1 = if (currentScenario == SimulationScenario.SENSOR_ERRORS && scenarioStep % 10 < 3) {
+            "er"
+        } else {
+            // 🔥 ИСПРАВЛЕНИЕ: Принудительно используем US локаль (точка как разделитель)
+            String.format(Locale.US, "%.2f", tempHot)
+        }
+
+        // 3. Cold temperature (lower compartment) - может быть "er" при ошибке
+        val temp2 = if (currentScenario == SimulationScenario.SENSOR_ERRORS && scenarioStep % 7 < 2) {
+            "er"
+        } else {
+            // 🔥 ИСПРАВЛЕНИЕ: Принудительно используем US локаль (точка как разделитель)
+            String.format(Locale.US, "%.2f", tempCold)
+        }
+
+        // 4. Closed state (0 = open, 1 = closed)
+        val closedState = if (bagClosed) 1 else 0
+
+        // 5. State (количество активных функций)
+        val currentState = calculateState()
+
+        // 6. Overload (акселерометр - разница от 1.0g)
+        // 🔥 ИСПРАВЛЕНИЕ: Принудительно используем US локаль (точка как разделитель)
+        val overloadValue = String.format(Locale.US, "%.2f", overload)
+
+        // Формат точно как в Arduino: batteryPercent,tempHot,tempCold,closedState,state,overload
+        val result = "$battery,$temp1,$temp2,$closedState,$currentState,$overloadValue"
+
+        Log.d("ArduinoSimulator", "Генерируем данные: $result")
+        Log.d("ArduinoSimulator", "🎯 ТОЧНЫЙ РЕЗУЛЬТАТ: '$result' (параметров: ${result.split(",").size})")
+
+        return result
     }
 
     private fun updateSimulationState() {
@@ -140,61 +171,69 @@ class ArduinoSimulator(
 
     private fun updateNormalState() {
         // Медленная разрядка батареи
-        if (scenarioStep % 120 == 0) batteryLevel--
+        if (scenarioStep % 400 == 0) batteryPercent-- // Разряжается медленнее
 
         // Небольшие колебания температуры
-        upperTemp += Random.nextFloat() * 0.4f - 0.2f
-        lowerTemp += Random.nextFloat() * 0.3f - 0.15f
+        tempHot += Random.nextFloat() * 0.4f - 0.2f
+        tempCold += Random.nextFloat() * 0.3f - 0.15f
 
-        // Случайная тряска
-        shakeLevel = Random.nextFloat() * 0.3f
+        // Ограничиваем температуры в разумных пределах
+        tempHot = tempHot.coerceIn(20.0f, 30.0f)
+        tempCold = tempCold.coerceIn(10.0f, 20.0f)
 
-        // Случайное открытие/закрытие сумки (редко)
-        if (Random.nextFloat() < 0.01f) {
+        // Случайный overload (небольшой)
+        overload = Random.nextFloat() * 0.3f
+
+        // Случайное открытие/закрытие сумки (очень редко)
+        if (Random.nextFloat() < 0.005f) {
             bagClosed = !bagClosed
         }
     }
 
-    // 🔥 ОБНОВЛЕННЫЕ краткие сценарии
     private fun updateBatteryDrainState() {
-        // Быстрая разрядка за 30 секунд
+        // Быстрая разрядка за 30 секунд (30000мс / 300мс = 100 шагов)
         when {
-            scenarioStep < 10 -> batteryLevel = 50 - scenarioStep * 2 // 50% -> 30%
-            scenarioStep < 20 -> batteryLevel = 30 - (scenarioStep - 10) * 2 // 30% -> 10%
-            scenarioStep < 30 -> batteryLevel = 10 - (scenarioStep - 20) // 10% -> 0%
+            scenarioStep < 33 -> batteryPercent = 50 - scenarioStep * 1 // 50% -> 17%
+            scenarioStep < 66 -> batteryPercent =
+                17 - (scenarioStep - 33) // 17% -> -16% (ограничится 0)
+            scenarioStep < 100 -> batteryPercent = 0
             else -> {
-                batteryLevel = 0
-                // Автоматический возврат к нормальному режиму
+                batteryPercent = 5 // Критический уровень
                 setScenario(SimulationScenario.NORMAL)
             }
         }
 
-        upperTemp += Random.nextFloat() * 0.2f - 0.1f
-        lowerTemp += Random.nextFloat() * 0.2f - 0.1f
-        shakeLevel = Random.nextFloat() * 0.2f
+        batteryPercent = batteryPercent.coerceIn(0, 100)
+
+        tempHot += Random.nextFloat() * 0.2f - 0.1f
+        tempCold += Random.nextFloat() * 0.2f - 0.1f
+        overload = Random.nextFloat() * 0.2f
     }
 
     private fun updateHeatingCycleState() {
-        // Быстрый цикл нагрева за 45 секунд
+        // Цикл нагрева за 45 секунд (150 шагов)
         when {
-            scenarioStep < 10 -> {
-                heatActive = false
-                upperTemp = 25.0f + scenarioStep * 0.5f // Медленный рост
+            scenarioStep < 33 -> {
+                isHeatActive = false
+                tempHot = 25.0f + scenarioStep * 0.3f // Медленный рост 25°C -> 35°C
             }
 
-            scenarioStep < 25 -> {
-                heatActive = true
-                upperTemp = 30.0f + (scenarioStep - 10) * 1.5f // Быстрый нагрев до 52°C
+            scenarioStep < 83 -> {
+                isHeatActive = true
+                // Быстрый нагрев до 55°C
+                tempHot = 35.0f + (scenarioStep - 33) * 0.4f
             }
 
-            scenarioStep < 35 -> {
-                heatActive = true
-                upperTemp = 52.0f + Random.nextFloat() * 3f - 1.5f // Стабилизация ~52°C
+            scenarioStep < 117 -> {
+                isHeatActive = true
+                // Стабилизация около 55°C
+                tempHot = 55.0f + Random.nextFloat() * 4f - 2f
             }
 
-            scenarioStep < 45 -> {
-                heatActive = false
-                upperTemp = (upperTemp - 1.0f).coerceAtLeast(25.0f) // Остывание
+            scenarioStep < 150 -> {
+                isHeatActive = false
+                // Остывание
+                tempHot = (tempHot - 0.8f).coerceAtLeast(25.0f)
             }
 
             else -> {
@@ -202,31 +241,38 @@ class ArduinoSimulator(
             }
         }
 
-        batteryLevel = (batteryLevel - if (heatActive) 0.3f else 0.1f).toInt().coerceAtLeast(0)
-        shakeLevel = Random.nextFloat() * 0.3f
+        // Потребление батареи при нагреве
+        if (isHeatActive && scenarioStep % 10 == 0) {
+            batteryPercent = (batteryPercent - 1).coerceAtLeast(0)
+        }
+
+        overload = Random.nextFloat() * 0.3f
     }
 
     private fun updateCoolingCycleState() {
-        // Быстрый цикл охлаждения за 45 секунд
+        // Цикл охлаждения за 45 секунд (150 шагов)
         when {
-            scenarioStep < 10 -> {
+            scenarioStep < 33 -> {
                 coolActive = false
-                lowerTemp = 15.0f - scenarioStep * 0.3f // Медленное остывание
+                tempCold = 15.0f - scenarioStep * 0.2f // Медленное остывание 15°C -> 8°C
             }
 
-            scenarioStep < 25 -> {
+            scenarioStep < 83 -> {
                 coolActive = true
-                lowerTemp = 12.0f - (scenarioStep - 10) * 0.5f // Быстрое охлаждение до 4°C
+                // Быстрое охлаждение до 2°C
+                tempCold = 8.0f - (scenarioStep - 33) * 0.12f
             }
 
-            scenarioStep < 35 -> {
+            scenarioStep < 117 -> {
                 coolActive = true
-                lowerTemp = 4.0f + Random.nextFloat() * 2f - 1f // Стабилизация ~4°C
+                // Стабилизация около 2°C
+                tempCold = 2.0f + Random.nextFloat() * 3f - 1.5f
             }
 
-            scenarioStep < 45 -> {
+            scenarioStep < 150 -> {
                 coolActive = false
-                lowerTemp = (lowerTemp + 0.3f).coerceAtMost(15.0f) // Нагревание
+                // Нагревание
+                tempCold = (tempCold + 0.3f).coerceAtMost(15.0f)
             }
 
             else -> {
@@ -234,75 +280,87 @@ class ArduinoSimulator(
             }
         }
 
-        batteryLevel = (batteryLevel - if (coolActive) 0.4f else 0.1f).toInt().coerceAtLeast(0)
-        shakeLevel = Random.nextFloat() * 0.3f
+        // Потребление батареи при охлаждении
+        if (coolActive && scenarioStep % 8 == 0) {
+            batteryPercent = (batteryPercent - 1).coerceAtLeast(0)
+        }
+
+        overload = Random.nextFloat() * 0.3f
     }
 
     private fun updateBagOpeningClosingState() {
-        // Демонстрация открытия/закрытия за 40 секунд
+        // Демонстрация открытия/закрытия за 40 секунд (133 шага)
         when {
-            scenarioStep % 8 == 0 -> bagClosed = !bagClosed // Каждые 8 секунд
+            scenarioStep % 25 == 0 -> bagClosed = !bagClosed // Каждые ~7.5 секунд
         }
 
-        upperTemp += Random.nextFloat() * 0.3f - 0.15f
-        lowerTemp += Random.nextFloat() * 0.3f - 0.15f
-        shakeLevel = Random.nextFloat() * 0.5f
+        tempHot += Random.nextFloat() * 0.3f - 0.15f
+        tempCold += Random.nextFloat() * 0.3f - 0.15f
+        overload = Random.nextFloat() * 0.5f
 
-        if (scenarioStep % 60 == 0) batteryLevel--
+        if (scenarioStep % 200 == 0) batteryPercent--
 
-        if (scenarioStep >= 40) {
+        if (scenarioStep >= 133) {
             setScenario(SimulationScenario.NORMAL)
         }
     }
 
     private fun updateStrongShakingState() {
-        // Демонстрация тряски за 35 секунд
+        // Демонстрация тряски за 35 секунд (117 шагов)
         when {
-            scenarioStep < 10 -> shakeLevel = Random.nextFloat() * 1.0f + 2.5f // Экстремальная
-            scenarioStep < 20 -> shakeLevel = Random.nextFloat() * 0.8f + 1.2f // Сильная
-            scenarioStep < 30 -> shakeLevel = Random.nextFloat() * 0.6f + 0.5f // Слабая
-            scenarioStep < 35 -> shakeLevel = Random.nextFloat() * 0.2f // Затухание
+            scenarioStep < 33 -> overload =
+                Random.nextFloat() * 1.5f + 2.0f // Экстремальная 2.0-3.5
+            scenarioStep < 66 -> overload = Random.nextFloat() * 1.0f + 1.0f // Сильная 1.0-2.0
+            scenarioStep < 100 -> overload = Random.nextFloat() * 0.8f + 0.3f // Средняя 0.3-1.1
+            scenarioStep < 117 -> overload = Random.nextFloat() * 0.2f // Затухание 0.0-0.2
             else -> {
                 setScenario(SimulationScenario.NORMAL)
             }
         }
 
-        upperTemp += Random.nextFloat() * 0.4f - 0.2f
-        lowerTemp += Random.nextFloat() * 0.4f - 0.2f
+        tempHot += Random.nextFloat() * 0.4f - 0.2f
+        tempCold += Random.nextFloat() * 0.4f - 0.2f
 
-        if (scenarioStep % 20 == 0) batteryLevel--
+        if (scenarioStep % 67 == 0) batteryPercent-- // Батарея разряжается при тряске
     }
 
     private fun updateSensorErrorsState() {
-        // Демонстрация ошибок датчиков за 50 секунд
+        // Демонстрация ошибок датчиков за 50 секунд (167 шагов)
         // Ошибки уже обрабатываются в generateData()
-        upperTemp += Random.nextFloat() * 0.5f - 0.25f
-        lowerTemp += Random.nextFloat() * 0.5f - 0.25f
-        shakeLevel = Random.nextFloat() * 0.4f
 
-        if (scenarioStep % 30 == 0) batteryLevel--
+        // Для температур, которые не в состоянии ошибки
+        if (!(scenarioStep % 10 < 3)) {
+            tempHot += Random.nextFloat() * 0.5f - 0.25f
+        }
+        if (!(scenarioStep % 7 < 2)) {
+            tempCold += Random.nextFloat() * 0.5f - 0.25f
+        }
 
-        if (scenarioStep >= 50) {
+        overload = Random.nextFloat() * 0.4f
+
+        if (scenarioStep % 100 == 0) batteryPercent--
+
+        if (scenarioStep >= 167) {
             setScenario(SimulationScenario.NORMAL)
         }
     }
 
     private fun calculateState(): Int {
-        var state = 0
-        if (heatActive) state++
-        if (coolActive) state++
-        if (lightActive) state++
-        return state
+        var currentState = 0
+        if (isHeatActive) currentState++
+        if (coolActive) currentState++
+        if (lightActive) currentState++
+        return currentState
     }
 
     // Методы для ручного управления параметрами
     fun setBatteryLevel(level: Int) {
-        batteryLevel = level.coerceIn(0, 100)
+        batteryPercent = level.coerceIn(0, 100)
     }
 
     fun setTemperatures(upper: Float, lower: Float) {
-        upperTemp = upper
-        lowerTemp = lower
+        tempHot = upper
+        tempCold = lower
     }
 
     fun setBagClosed(closed: Boolean) {
@@ -310,6 +368,6 @@ class ArduinoSimulator(
     }
 
     fun triggerShake(intensity: Float) {
-        shakeLevel = intensity
+        overload = intensity
     }
 }

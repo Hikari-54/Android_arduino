@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
@@ -22,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluetooth_andr11.R
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
-import com.example.bluetooth_andr11.location.LocationManager
+import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.log.LogModule
 
 @Composable
@@ -38,7 +39,7 @@ fun ControlPanel(
     context: Context,
     modifier: Modifier = Modifier,
     bluetoothHelper: BluetoothHelper,
-    locationManager: LocationManager
+    locationManager: EnhancedLocationManager
 ) {
     Column(
         modifier = modifier.padding(10.dp),
@@ -46,129 +47,171 @@ fun ControlPanel(
         verticalArrangement = Arrangement.Top
     ) {
         // Отображение данных устройства
-        Text(
-            text = "Температура верхний отсек: $temp1°C",
-            modifier = Modifier.padding(4.dp),
-            fontSize = 18.sp
+        DeviceStatusDisplay(
+            temp1 = temp1,
+            temp2 = temp2,
+            hallState = hallState,
+            acc = acc
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Температура нижний отсек: $temp2°C",
-            modifier = Modifier.padding(4.dp),
-            fontSize = 18.sp
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Статус: $hallState", modifier = Modifier.padding(4.dp), fontSize = 18.sp
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-//        Text(
-//            text = "Координаты: $coordinates", modifier = Modifier.padding(4.dp), fontSize = 18.sp
-//        )
-//        Spacer(modifier = Modifier.height(8.dp))
-        // Text(text = "Функциональное состояние: $functionState", modifier = Modifier.padding(4.dp))
-        // Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Уровень тряски: $acc", modifier = Modifier.padding(4.dp), fontSize = 18.sp)
+
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Ряд кнопок с иконками
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+        // Панель управления
+        ControlButtons(
+            context = context,
+            bluetoothHelper = bluetoothHelper,
+            locationManager = locationManager,
+            onCommandSend = onCommandSend,
+            isHeatOn = isHeatOn,
+            isCoolOn = isCoolOn,
+            isLightOn = isLightOn
+        )
+    }
+}
+
+@Composable
+private fun DeviceStatusDisplay(
+    temp1: String,
+    temp2: String,
+    hallState: String,
+    acc: String
+) {
+    Column {
+        StatusItem(label = "Температура верхний отсек", value = "$temp1°C")
+        StatusItem(label = "Температура нижний отсек", value = "$temp2°C")
+        StatusItem(label = "Статус", value = hallState)
+        StatusItem(label = "Уровень тряски", value = acc)
+    }
+}
+
+@Composable
+private fun StatusItem(label: String, value: String) {
+    Text(
+        text = "$label: $value",
+        modifier = Modifier.padding(4.dp),
+        fontSize = 18.sp
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+}
+
+@Composable
+private fun ControlButtons(
+    context: Context,
+    bluetoothHelper: BluetoothHelper,
+    locationManager: EnhancedLocationManager,
+    onCommandSend: (String) -> Unit,
+    isHeatOn: MutableState<Boolean>,
+    isCoolOn: MutableState<Boolean>,
+    isLightOn: MutableState<Boolean>
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        // 🔥 ОБНОВЛЕННАЯ кнопка "Нагрев"
+        ControlButton(
+            iconRes = R.drawable.fire,
+            label = "Нагрев",
+            isActive = isHeatOn.value,
+            activeColor = Color(0xFFFF4500),
+            onClick = {
+                if (checkBluetoothConnection(context, bluetoothHelper)) {
+                    isHeatOn.value = !isHeatOn.value
+                    onCommandSend(if (isHeatOn.value) "H" else "h")
+
+                    // 🔥 ИЗМЕНЕНО: Используем logUserAction для действий пользователя
+                    LogModule.logUserAction(
+                        context = context,
+                        bluetoothHelper = bluetoothHelper,
+                        locationManager = locationManager,
+                        action = "Нагрев ${if (isHeatOn.value) "включен" else "выключен"}"
+                    )
+                }
+            }
+        )
+
+        // 🔥 ОБНОВЛЕННАЯ кнопка "Холод"
+        ControlButton(
+            iconRes = R.drawable.snowflake,
+            label = "Холод",
+            isActive = isCoolOn.value,
+            activeColor = Color(0xFF1E90FF),
+            onClick = {
+                if (checkBluetoothConnection(context, bluetoothHelper)) {
+                    isCoolOn.value = !isCoolOn.value
+                    onCommandSend(if (isCoolOn.value) "C" else "c")
+
+                    // 🔥 ИЗМЕНЕНО: Используем logUserAction для действий пользователя
+                    LogModule.logUserAction(
+                        context = context,
+                        bluetoothHelper = bluetoothHelper,
+                        locationManager = locationManager,
+                        action = "Холод ${if (isCoolOn.value) "включен" else "выключен"}"
+                    )
+                }
+            }
+        )
+
+        // 🔥 ОБНОВЛЕННАЯ кнопка "Свет"
+        ControlButton(
+            iconRes = R.drawable.light,
+            label = "Свет",
+            isActive = isLightOn.value,
+            activeColor = Color(0xFFF0F000),
+            onClick = {
+                if (checkBluetoothConnection(context, bluetoothHelper)) {
+                    isLightOn.value = !isLightOn.value
+                    onCommandSend(if (isLightOn.value) "L" else "l")
+
+                    // 🔥 ИЗМЕНЕНО: Используем logUserAction для действий пользователя
+                    LogModule.logUserAction(
+                        context = context,
+                        bluetoothHelper = bluetoothHelper,
+                        locationManager = locationManager,
+                        action = "Свет ${if (isLightOn.value) "включен" else "выключен"}"
+                    )
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ControlButton(
+    iconRes: Int,
+    label: String,
+    isActive: Boolean,
+    activeColor: Color,
+    onClick: () -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Button(
+            onClick = onClick,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isActive) activeColor else Color.Gray
+            ),
+            modifier = Modifier.padding(4.dp)
         ) {
-            // Кнопка "Нагрев"
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Button(
-                    onClick = {
-                        if (!bluetoothHelper.isDeviceConnected) {
-                            Toast.makeText(context, "Bluetooth не подключен", Toast.LENGTH_SHORT)
-                                .show()
-                        } else {
-                            isHeatOn.value = !isHeatOn.value
-                            onCommandSend(if (isHeatOn.value) "H" else "h")
-                            LogModule.logEventWithLocationAndLimit(
-                                context = context,
-                                bluetoothHelper = bluetoothHelper,
-                                locationManager = locationManager,
-                                event = "Нагрев ${if (isHeatOn.value) "включен" else "выключен"}"
-                            )
-                        }
-                    }, colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isHeatOn.value) Color(
-                            0xFFFF4500
-                        ) else Color.Gray
-                    ), modifier = Modifier.padding(4.dp)
-                ) {
-                    androidx.compose.material3.Icon(
-                        painter = painterResource(id = R.drawable.fire),
-                        contentDescription = "Нагрев",
-                        tint = Color.White
-                    )
-                }
-                Text(text = "Нагрев", modifier = Modifier.padding(top = 4.dp))
-            }
-
-            // Кнопка "Холод"
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Button(
-                    onClick = {
-                        if (!bluetoothHelper.isDeviceConnected) {
-                            Toast.makeText(context, "Bluetooth не подключен", Toast.LENGTH_SHORT)
-                                .show()
-                        } else {
-                            isCoolOn.value = !isCoolOn.value
-                            onCommandSend(if (isCoolOn.value) "C" else "c")
-                            LogModule.logEventWithLocationAndLimit(
-                                context = context,
-                                bluetoothHelper = bluetoothHelper,
-                                locationManager = locationManager,
-                                event = "Холод ${if (isCoolOn.value) "включен" else "выключен"}"
-                            )
-                        }
-                    }, colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isCoolOn.value) Color(0xFF1E90FF) else Color.Gray
-                    ), modifier = Modifier.padding(4.dp)
-                ) {
-                    androidx.compose.material3.Icon(
-                        painter = painterResource(id = R.drawable.snowflake),
-                        contentDescription = "Холод",
-                        tint = Color.White
-                    )
-                }
-                Text(text = "Холод", modifier = Modifier.padding(top = 4.dp))
-            }
-
-// Кнопка "Свет"
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Button(
-                    onClick = {
-                        if (!bluetoothHelper.isDeviceConnected) {
-                            Toast.makeText(context, "Bluetooth не подключен", Toast.LENGTH_SHORT)
-                                .show()
-                        } else {
-                            isLightOn.value = !isLightOn.value
-                            onCommandSend(if (isLightOn.value) "L" else "l")
-                            LogModule.logEventWithLocationAndLimit(
-                                context = context,
-                                bluetoothHelper = bluetoothHelper,
-                                locationManager = locationManager,
-                                event = "Свет ${if (isLightOn.value) "включен" else "выключен"}"
-                            )
-                        }
-                    }, colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isLightOn.value) Color(0xFFF0F000) else Color.Gray
-                    ), modifier = Modifier.padding(4.dp)
-                ) {
-                    androidx.compose.material3.Icon(
-                        painter = painterResource(id = R.drawable.light),
-                        contentDescription = "Свет",
-                        tint = Color.White
-                    )
-                }
-                Text(text = "Свет", modifier = Modifier.padding(top = 4.dp))
-            }
+            Icon(
+                painter = painterResource(id = iconRes),
+                contentDescription = label,
+                tint = Color.White
+            )
         }
+        Text(
+            text = label,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+private fun checkBluetoothConnection(context: Context, bluetoothHelper: BluetoothHelper): Boolean {
+    return if (bluetoothHelper.isDeviceConnected) {
+        true
+    } else {
+        Toast.makeText(context, "Bluetooth не подключен", Toast.LENGTH_SHORT).show()
+        false
     }
 }

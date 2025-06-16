@@ -1,12 +1,12 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
+    // ❌ УБРАН: alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.example.bluetooth_andr11"
-    compileSdk = 35
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.example.bluetooth_andr11"
@@ -22,22 +22,33 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("debug")
         }
         debug {
             isDebuggable = true
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     kotlinOptions {
         jvmTarget = "11"
     }
+
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    composeOptions {
+        // ✅ ВОЗВРАЩЕНО: Для Kotlin 1.9.24 нужно указывать версию вручную
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
 }
 
@@ -53,9 +64,11 @@ dependencies {
     implementation(libs.androidx.material)
     implementation(libs.androidx.material3)
 
-    // Maps and location
-    implementation(libs.osmdroid.android)
+    // Google Play Services
     implementation(libs.play.services.location)
+
+    // Maps
+    implementation(libs.osmdroid.android)
 
     // Network and logging
     implementation(libs.okhttp)
