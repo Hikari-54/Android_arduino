@@ -363,10 +363,6 @@ class ArduinoSimulator(
         tempCold = lower
     }
 
-    fun setBagClosed(closed: Boolean) {
-        bagClosed = closed
-    }
-
     fun triggerShake(intensity: Float) {
         overload = intensity
     }

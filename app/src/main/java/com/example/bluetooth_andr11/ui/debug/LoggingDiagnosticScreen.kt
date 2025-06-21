@@ -241,7 +241,7 @@ private suspend fun performCompleteDiagnostic(
         appendLine("   ✅ Простая запись: Успешно")
 
         // Лог с геолокацией
-        LogModule.logEventWithEnhancedLocation(
+        LogModule.logEventWithLocation(
             context,
             bluetoothHelper,
             enhancedLocationManager,
@@ -313,7 +313,7 @@ private suspend fun createTestLogs(
     )
 
     testEvents.forEach { event ->
-        LogModule.logEventWithEnhancedLocation(
+        LogModule.logEventWithLocation(
             context,
             bluetoothHelper,
             enhancedLocationManager,

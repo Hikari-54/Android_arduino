@@ -183,29 +183,6 @@ object LogModule {
         )
     }
 
-    // Логирование изменений в системе местоположения
-    fun logLocationSystemChange(
-        context: Context,
-        locationManager: EnhancedLocationManager,
-        description: String
-    ) {
-        // 🔥 ИЗМЕНЕНО: Используем умное логирование GPS
-        val isAvailable = description.contains("доступно") || description.contains("включен")
-        logGpsStateChange(context, isAvailable, description)
-    }
-
-    // 🔥 НОВЫЙ метод для получения сводки состояния GPS
-    fun getGpsStatusSummary(): String {
-        return buildString {
-            append("GPS состояние: ")
-            when (lastGpsState) {
-                true -> append("✅ Доступен")
-                false -> append("❌ Недоступен ($consecutiveUnavailableCount раз)")
-                null -> append("❓ Неизвестно")
-            }
-        }
-    }
-
     // Устаревшие методы для обратной совместимости
     @Deprecated("Используйте logEventWithLocation", ReplaceWith("logEventWithLocation"))
     fun logEventWithEnhancedLocation(
@@ -236,8 +213,7 @@ object LogModule {
         bluetoothHelper: BluetoothHelper,
         locationManager: Any,
         event: String,
-        timeLimitSeconds: Int = 60,
-        noRepeat: Boolean = false
+        timeLimitSeconds: Int = 60
     ) {
         if (locationManager is EnhancedLocationManager) {
             logEventWithLimit(context, bluetoothHelper, locationManager, event, timeLimitSeconds)

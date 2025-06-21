@@ -138,7 +138,8 @@ class EnhancedLocationManager(
             Log.e(TAG, "❌ Ошибка умного логирования GPS: ${e.message}")
 
             // Fallback к простому логированию
-            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(java.util.Date())
+            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                .format(java.util.Date())
             val logMessage = "$timestamp - $event @ Системное событие\n"
 
             val logDir = java.io.File(context.getExternalFilesDir(null), "logs")
@@ -233,7 +234,10 @@ class EnhancedLocationManager(
         locationAccuracy.value = location.accuracy
 
         val source = when {
+            // 🔥 ИСПРАВЛЕНО: Добавляем @Suppress для deprecated API
+            @Suppress("DEPRECATION")
             location.isFromMockProvider -> "🧪 Mock"
+
             isFromCache -> "💾 Cache"
             location.accuracy <= 10f -> "🛰️ GPS"
             location.accuracy <= 50f -> "📡 Network+"
@@ -445,8 +449,6 @@ class EnhancedLocationManager(
         }
         isUpdatingLocation = false
     }
-
-    fun getCurrentCoordinates(): String = locationCoordinates.value
 
     fun getLocationInfo(): LocationInfo {
         return LocationInfo(

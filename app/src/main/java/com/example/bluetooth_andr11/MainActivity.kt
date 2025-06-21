@@ -89,7 +89,9 @@ class MainActivity : ComponentActivity() {
         initializeComponents()
         setupMonitoring() // Настройка всех мониторингов
         checkInitialPermissions()
-        autoStartSimulationIfNeeded()
+        if (BuildConfig.DEBUG) {
+            autoStartSimulationIfNeeded()
+        }
 
         // 🔥 ИЗМЕНЕНО: Используем умное логирование для запуска
         LogModule.logSystemEvent(
@@ -299,16 +301,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun autoStartSimulationIfNeeded() {
-        if (BuildConfig.DEBUG && !bluetoothHelper.isDeviceConnected) {
-            Handler(Looper.getMainLooper()).postDelayed({
-                if (!bluetoothHelper.isDeviceConnected) {
-                    bluetoothHelper.enableSimulationMode(true)
-                    Toast.makeText(this, "🔧 Запущена симуляция Arduino", Toast.LENGTH_LONG).show()
+        // 🔥 ИСПРАВЛЕНИЕ: Двойная проверка DEBUG режима
+        if (!BuildConfig.DEBUG) {
+            Log.i(TAG, "RELEASE режим: автозапуск симуляции отключен")
+            return
+        }
 
-                    // 🔥 НОВОЕ: Логируем запуск симуляции
+        if (!bluetoothHelper.isDeviceConnected) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                // 🔥 ДОПОЛНИТЕЛЬНАЯ проверка перед запуском
+                if (BuildConfig.DEBUG && !bluetoothHelper.isDeviceConnected) {
+                    bluetoothHelper.enableSimulationMode(true)
+                    Toast.makeText(this, "🔧 Запущена симуляция Arduino (DEBUG)", Toast.LENGTH_LONG)
+                        .show()
+
                     LogModule.logSystemEvent(
                         this, bluetoothHelper, enhancedLocationManager,
-                        "Запуск симуляции Arduino (DEBUG режим)", "ОТЛАДКА"
+                        "Автозапуск симуляции Arduino (DEBUG режим)", "ОТЛАДКА"
                     )
                 }
             }, 3000)

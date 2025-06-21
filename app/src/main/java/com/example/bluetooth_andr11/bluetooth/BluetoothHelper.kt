@@ -17,6 +17,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import com.example.bluetooth_andr11.ArduinoSimulator
+import com.example.bluetooth_andr11.BuildConfig
 import com.example.bluetooth_andr11.MainActivity
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.log.LogModule
@@ -31,7 +32,8 @@ import java.util.UUID
 
 class BluetoothHelper(private val context: Context) {
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
-        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val bluetoothManager =
+            context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothManager.adapter
     }
 
@@ -47,10 +49,12 @@ class BluetoothHelper(private val context: Context) {
     private var arduinoSimulator: ArduinoSimulator? = null
     private var currentScenario = ArduinoSimulator.SimulationScenario.NORMAL
 
-    private val sharedPrefs = context.getSharedPreferences("bluetooth_helper_prefs", Context.MODE_PRIVATE)
+    private val sharedPrefs =
+        context.getSharedPreferences("bluetooth_helper_prefs", Context.MODE_PRIVATE)
 
     init {
-        restoreSimulationState()
+        clearSimulationDataIfRelease() // Сначала очищаем если RELEASE
+        restoreSimulationState()       // Потом восстанавливаем если DEBUG
     }
 
     // === ПУБЛИЧНЫЕ МЕТОДЫ ===
@@ -136,9 +140,7 @@ class BluetoothHelper(private val context: Context) {
 
     fun listenForData(onDataReceived: (String) -> Unit) {
         if (isConnected && inputStream != null) {
-            startListening { data ->
-                (context as? MainActivity)?.handleReceivedData(data)
-            }
+            startListening(onDataReceived) // 🔥 ИСПРАВЛЕНО: Передаем параметр
         }
     }
 
@@ -175,13 +177,17 @@ class BluetoothHelper(private val context: Context) {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     BluetoothAdapter.ACTION_STATE_CHANGED -> {
-                        val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                        val state =
+                            intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
                         val isEnabled = state == BluetoothAdapter.STATE_ON
 
                         if (state == BluetoothAdapter.STATE_TURNING_OFF || state == BluetoothAdapter.STATE_OFF) {
                             disconnectDevice()
                             LogModule.logEventWithLocation(
-                                context!!, this@BluetoothHelper, locationManager, "Bluetooth выключен"
+                                context!!,
+                                this@BluetoothHelper,
+                                locationManager,
+                                "Bluetooth выключен"
                             )
                             dialogShown = false
                         }
@@ -243,6 +249,14 @@ class BluetoothHelper(private val context: Context) {
     // === МЕТОДЫ СИМУЛЯЦИИ ===
 
     fun enableSimulationMode(enable: Boolean) {
+        // 🔥 ИСПРАВЛЕНИЕ: Запрещаем включение симуляции в RELEASE
+        if (!BuildConfig.DEBUG && enable) {
+            Log.w(TAG, "RELEASE режим: попытка включить симуляцию заблокирована")
+            Toast.makeText(context, "Симуляция недоступна в релизной версии", Toast.LENGTH_SHORT)
+                .show()
+            return
+        }
+
         simulationMode = enable
         sharedPrefs.edit().putBoolean("simulation_enabled", enable).apply()
 
@@ -252,6 +266,20 @@ class BluetoothHelper(private val context: Context) {
         } else {
             stopArduinoSimulation()
             Log.i(TAG, "Симуляция Arduino выключена")
+        }
+    }
+
+    fun clearSimulationDataIfRelease() {
+        if (!BuildConfig.DEBUG) {
+            sharedPrefs.edit()
+                .remove("simulation_enabled")
+                .remove("current_scenario")
+                .apply()
+
+            simulationMode = false
+            stopArduinoSimulation()
+
+            Log.i(TAG, "RELEASE режим: все данные симуляции очищены")
         }
     }
 
@@ -265,16 +293,22 @@ class BluetoothHelper(private val context: Context) {
         return when (currentScenario) {
             ArduinoSimulator.SimulationScenario.NORMAL ->
                 ScenarioInfo("Обычная работа", "⚪", "Стабильные показатели", 60)
+
             ArduinoSimulator.SimulationScenario.BATTERY_DRAIN ->
                 ScenarioInfo("Разрядка батареи", "🔋", "Быстрая потеря заряда", 30)
+
             ArduinoSimulator.SimulationScenario.HEATING_CYCLE ->
                 ScenarioInfo("Цикл нагрева", "🔥", "Нагрев до 52°C", 45)
+
             ArduinoSimulator.SimulationScenario.COOLING_CYCLE ->
                 ScenarioInfo("Цикл охлаждения", "❄️", "Охлаждение до 4°C", 45)
+
             ArduinoSimulator.SimulationScenario.BAG_OPENING_CLOSING ->
                 ScenarioInfo("Открытие сумки", "📦", "Частые переключения", 40)
+
             ArduinoSimulator.SimulationScenario.STRONG_SHAKING ->
                 ScenarioInfo("Сильная тряска", "📳", "Экстремальные колебания", 35)
+
             ArduinoSimulator.SimulationScenario.SENSOR_ERRORS ->
                 ScenarioInfo("Ошибки датчиков", "⚠️", "Периодические сбои", 50)
         }
@@ -282,7 +316,9 @@ class BluetoothHelper(private val context: Context) {
 
     // Методы управления симулятором
     fun setSimulationBattery(level: Int) = arduinoSimulator?.setBatteryLevel(level)
-    fun setSimulationTemperatures(upper: Float, lower: Float) = arduinoSimulator?.setTemperatures(upper, lower)
+    fun setSimulationTemperatures(upper: Float, lower: Float) =
+        arduinoSimulator?.setTemperatures(upper, lower)
+
     fun triggerSimulationShake(intensity: Float) = arduinoSimulator?.triggerShake(intensity)
 
     // === ПРИВАТНЫЕ МЕТОДЫ ===
@@ -371,8 +407,9 @@ class BluetoothHelper(private val context: Context) {
             val line = lines[i].trim()
             if (line.isNotEmpty() && isValidArduinoData(line)) {
                 withContext(Dispatchers.Main) {
-                    onDataReceived?.invoke(line) ?:
-                    (context as? MainActivity)?.handleReceivedData(line)
+                    onDataReceived?.invoke(line) ?: (context as? MainActivity)?.handleReceivedData(
+                        line
+                    )
                 }
             }
         }
@@ -397,13 +434,15 @@ class BluetoothHelper(private val context: Context) {
             val temp2 = parts[2].trim()
             val closed = parts[3].trim().toIntOrNull() ?: return false
             val state = parts[4].trim().toIntOrNull() ?: return false
-            val overload = parts[5].trim().toFloatOrNull() ?: return false
+            val overload = parts[5].trim().toFloatOrNull()
+                ?: return false // 🔥 ИСПРАВЛЕНО: Используем переменную
 
             battery in 0..100 &&
                     (temp1 == "er" || temp1.toFloatOrNull() != null) &&
                     (temp2 == "er" || temp2.toFloatOrNull() != null) &&
                     closed in 0..1 &&
-                    state >= 0
+                    state >= 0 &&
+                    overload >= 0.0f // 🔥 ДОБАВЛЕНО: Проверяем overload
         } catch (e: Exception) {
             false
         }
@@ -444,18 +483,32 @@ class BluetoothHelper(private val context: Context) {
     }
 
     private fun restoreSimulationState() {
+        // 🔥 ИСПРАВЛЕНИЕ: Симуляция доступна только в DEBUG режиме
+        if (!BuildConfig.DEBUG) {
+            // В RELEASE режиме принудительно отключаем симуляцию
+            sharedPrefs.edit()
+                .putBoolean("simulation_enabled", false)
+                .apply()
+            Log.i(TAG, "RELEASE режим: симуляция принудительно отключена")
+            return
+        }
+
         val savedSimulationEnabled = sharedPrefs.getBoolean("simulation_enabled", false)
-        val savedScenarioName = sharedPrefs.getString("current_scenario",
-            ArduinoSimulator.SimulationScenario.NORMAL.name)
+        val savedScenarioName = sharedPrefs.getString(
+            "current_scenario",
+            ArduinoSimulator.SimulationScenario.NORMAL.name
+        )
 
         try {
-            currentScenario = ArduinoSimulator.SimulationScenario.valueOf(savedScenarioName ?: "NORMAL")
+            currentScenario =
+                ArduinoSimulator.SimulationScenario.valueOf(savedScenarioName ?: "NORMAL")
         } catch (e: IllegalArgumentException) {
             currentScenario = ArduinoSimulator.SimulationScenario.NORMAL
         }
 
         if (savedSimulationEnabled) {
             enableSimulationMode(true)
+            Log.i(TAG, "DEBUG режим: симуляция восстановлена из настроек")
         }
     }
 
@@ -464,7 +517,7 @@ class BluetoothHelper(private val context: Context) {
             if (!dialogShown) {
                 dialogShown = true
                 showDeviceSelectionDialog(context) { device ->
-                    connectToDevice(device) { success, message ->
+                    connectToDevice(device) { _, message ->
                         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         dialogShown = false
                     }

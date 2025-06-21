@@ -36,13 +36,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+
 object PasswordManager {
     private const val PREFS_NAME = "app_security"
     private const val PASSWORD_KEY = "access_password"
     private const val SESSION_KEY = "session_active"
 
     // Захардкоженный пароль
-    private const val DEFAULT_PASSWORD = "admin123"
+    private const val DEFAULT_PASSWORD = "root1644"
 
     fun checkPassword(context: Context, inputPassword: String): Boolean {
         val sharedPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

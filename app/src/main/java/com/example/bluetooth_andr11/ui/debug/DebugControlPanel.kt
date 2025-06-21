@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluetooth_andr11.ArduinoSimulator
+import com.example.bluetooth_andr11.BuildConfig
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.ui.location.LocationDiagnostics
@@ -45,6 +46,11 @@ fun DebugControlPanel(
     locationManager: EnhancedLocationManager, // 🔥 Используем EnhancedLocationManager напрямую
     modifier: Modifier = Modifier
 ) {
+    // 🔥 ЗАЩИТА: В RELEASE режиме не показываем панель отладки
+    if (!BuildConfig.DEBUG) {
+        return // Ранний выход, панель не отображается
+    }
+
     val context = LocalContext.current
 
     // Существующие состояния...
