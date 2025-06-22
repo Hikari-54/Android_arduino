@@ -35,6 +35,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.edit
 
 
 object PasswordManager {
@@ -43,7 +44,7 @@ object PasswordManager {
     private const val SESSION_KEY = "session_active"
 
     // Захардкоженный пароль
-    private const val DEFAULT_PASSWORD = "root1644"
+    private const val DEFAULT_PASSWORD = "admin1234"
 
     fun checkPassword(context: Context, inputPassword: String): Boolean {
         val sharedPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -53,7 +54,9 @@ object PasswordManager {
 
     fun setSessionActive(context: Context, active: Boolean) {
         val sharedPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        sharedPrefs.edit().putBoolean(SESSION_KEY, active).apply()
+        sharedPrefs.edit {
+            putBoolean(SESSION_KEY, active)
+        }
     }
 
     fun isSessionActive(context: Context): Boolean {
