@@ -1,6 +1,7 @@
 package com.example.bluetooth_andr11.ui.control
 
 import android.content.Context
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,6 +30,7 @@ import com.example.bluetooth_andr11.R
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.log.LogModule
+import kotlinx.coroutines.launch
 
 @Composable
 fun ControlPanel(
@@ -56,12 +62,11 @@ fun ControlPanel(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Панель управления
-        ControlButtons(
+        // Простые защищенные кнопки
+        SimpleProtectedButtons(
             context = context,
             bluetoothHelper = bluetoothHelper,
             locationManager = locationManager,
-            onCommandSend = onCommandSend,
             isHeatOn = isHeatOn,
             isCoolOn = isCoolOn,
             isLightOn = isLightOn
@@ -95,82 +100,149 @@ private fun StatusItem(label: String, value: String) {
 }
 
 @Composable
-private fun ControlButtons(
+private fun SimpleProtectedButtons(
     context: Context,
     bluetoothHelper: BluetoothHelper,
     locationManager: EnhancedLocationManager,
-    onCommandSend: (String) -> Unit,
     isHeatOn: MutableState<Boolean>,
     isCoolOn: MutableState<Boolean>,
     isLightOn: MutableState<Boolean>
 ) {
+    // ✅ ОБЩАЯ блокировка для ВСЕХ кнопок (синхронный канал)
+    var lastAnyCommandTime by remember { mutableLongStateOf(0L) }
+
+    val debounceTime = 1500L // ✅ Увеличил до 1.5сек для агрессивной отправки
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        // 🔥 ОБНОВЛЕННАЯ кнопка "Нагрев"
-        ControlButton(
+        // Кнопка "Нагрев"
+        SimpleButton(
             iconRes = R.drawable.fire,
             label = "Нагрев",
             isActive = isHeatOn.value,
             activeColor = Color(0xFFFF4500),
             onClick = {
-                if (checkBluetoothConnection(context, bluetoothHelper)) {
-                    isHeatOn.value = !isHeatOn.value
-                    onCommandSend(if (isHeatOn.value) "H" else "h")
+                val now = System.currentTimeMillis()
+                if (now - lastAnyCommandTime < debounceTime) {
+                    Log.w(
+                        "ControlPanel",
+                        "🚫 Нагрев заблокирован: канал занят (${now - lastAnyCommandTime}мс)"
+                    )
+                    Toast.makeText(context, "⏳ Канал занят, подождите...", Toast.LENGTH_SHORT)
+                        .show()
+                    return@SimpleButton
+                }
+                lastAnyCommandTime = now
 
-                    // 🔥 ИЗМЕНЕНО: Используем logUserAction для действий пользователя
+                if (checkConnection(context, bluetoothHelper)) {
+                    val command = if (isHeatOn.value) "h" else "H"
+                    val newState = !isHeatOn.value
+
+                    Log.d(
+                        "ControlPanel",
+                        "🔥 Нагрев: агрессивная отправка '$command' (${isHeatOn.value} -> $newState)"
+                    )
+
+                    // ✅ АГРЕССИВНАЯ ОТПРАВКА команды
+                    sendAggressiveCommand(bluetoothHelper, command)
+
+                    isHeatOn.value = newState
+
                     LogModule.logUserAction(
                         context = context,
                         bluetoothHelper = bluetoothHelper,
                         locationManager = locationManager,
-                        action = "Нагрев ${if (isHeatOn.value) "включен" else "выключен"}"
+                        action = "Нагрев ${if (newState) "включен" else "выключен"}"
                     )
                 }
             }
         )
 
-        // 🔥 ОБНОВЛЕННАЯ кнопка "Холод"
-        ControlButton(
+        // Кнопка "Холод"
+        SimpleButton(
             iconRes = R.drawable.snowflake,
             label = "Холод",
             isActive = isCoolOn.value,
             activeColor = Color(0xFF1E90FF),
             onClick = {
-                if (checkBluetoothConnection(context, bluetoothHelper)) {
-                    isCoolOn.value = !isCoolOn.value
-                    onCommandSend(if (isCoolOn.value) "C" else "c")
+                val now = System.currentTimeMillis()
+                if (now - lastAnyCommandTime < debounceTime) {
+                    Log.w(
+                        "ControlPanel",
+                        "🚫 Холод заблокирован: канал занят (${now - lastAnyCommandTime}мс)"
+                    )
+                    Toast.makeText(context, "⏳ Канал занят, подождите...", Toast.LENGTH_SHORT)
+                        .show()
+                    return@SimpleButton
+                }
+                lastAnyCommandTime = now
 
-                    // 🔥 ИЗМЕНЕНО: Используем logUserAction для действий пользователя
+                if (checkConnection(context, bluetoothHelper)) {
+                    val command = if (isCoolOn.value) "c" else "C"
+                    val newState = !isCoolOn.value
+
+                    Log.d(
+                        "ControlPanel",
+                        "❄️ Холод: агрессивная отправка '$command' (${isCoolOn.value} -> $newState)"
+                    )
+
+                    // ✅ АГРЕССИВНАЯ ОТПРАВКА команды
+                    sendAggressiveCommand(bluetoothHelper, command)
+
+                    isCoolOn.value = newState
+
                     LogModule.logUserAction(
                         context = context,
                         bluetoothHelper = bluetoothHelper,
                         locationManager = locationManager,
-                        action = "Холод ${if (isCoolOn.value) "включен" else "выключен"}"
+                        action = "Холод ${if (newState) "включен" else "выключен"}"
                     )
                 }
             }
         )
 
-        // 🔥 ОБНОВЛЕННАЯ кнопка "Свет"
-        ControlButton(
+        // Кнопка "Свет"
+        SimpleButton(
             iconRes = R.drawable.light,
             label = "Свет",
             isActive = isLightOn.value,
             activeColor = Color(0xFFF0F000),
             onClick = {
-                if (checkBluetoothConnection(context, bluetoothHelper)) {
-                    isLightOn.value = !isLightOn.value
-                    onCommandSend(if (isLightOn.value) "L" else "l")
+                val now = System.currentTimeMillis()
+                if (now - lastAnyCommandTime < debounceTime) {
+                    Log.w(
+                        "ControlPanel",
+                        "🚫 Свет заблокирован: канал занят (${now - lastAnyCommandTime}мс)"
+                    )
+                    Toast.makeText(context, "⏳ Канал занят, подождите...", Toast.LENGTH_SHORT)
+                        .show()
+                    return@SimpleButton
+                }
+                lastAnyCommandTime = now
 
-                    // 🔥 ИЗМЕНЕНО: Используем logUserAction для действий пользователя
+                if (checkConnection(context, bluetoothHelper)) {
+                    val command = if (isLightOn.value) "l" else "L"
+                    val newState = !isLightOn.value
+
+                    Log.d(
+                        "ControlPanel",
+                        "💡 Свет: агрессивная отправка '$command' (${isLightOn.value} -> $newState)"
+                    )
+
+                    // ✅ АГРЕССИВНАЯ ОТПРАВКА команды
+                    sendAggressiveCommand(bluetoothHelper, command)
+
+                    isLightOn.value = newState
+
                     LogModule.logUserAction(
                         context = context,
                         bluetoothHelper = bluetoothHelper,
                         locationManager = locationManager,
-                        action = "Свет ${if (isLightOn.value) "включен" else "выключен"}"
+                        action = "Свет ${if (newState) "включен" else "выключен"}"
                     )
                 }
             }
@@ -178,8 +250,35 @@ private fun ControlButtons(
     }
 }
 
+// ✅ АГРЕССИВНАЯ функция для множественной отправки команд
+private fun sendAggressiveCommand(
+    bluetoothHelper: BluetoothHelper,
+    command: String
+) {
+    Log.d("ControlPanel", "🔥 АГРЕССИВНАЯ отправка команды '$command'")
+
+    // ✅ Первая серия: 3 команды подряд (для прочистки буфера)
+    bluetoothHelper.sendCommand(command)
+    bluetoothHelper.sendCommand(command)
+    bluetoothHelper.sendCommand(command)
+    Log.d("ControlPanel", "📤 Серия 1/3: команда '$command' отправлена 3 раза подряд")
+
+    // ✅ Вторая серия: через 100мс еще 2 команды
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        kotlinx.coroutines.delay(100L)
+        bluetoothHelper.sendCommand(command)
+        bluetoothHelper.sendCommand(command)
+        Log.d("ControlPanel", "📤 Серия 2/3: команда '$command' отправлена +2 раза через 100мс")
+
+        // ✅ Третья серия: через еще 200мс финальная команда
+        kotlinx.coroutines.delay(200L)
+        bluetoothHelper.sendCommand(command)
+        Log.d("ControlPanel", "📤 Серия 3/3: финальная команда '$command' через 300мс")
+    }
+}
+
 @Composable
-private fun ControlButton(
+private fun SimpleButton(
     iconRes: Int,
     label: String,
     isActive: Boolean,
@@ -188,7 +287,10 @@ private fun ControlButton(
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Button(
-            onClick = onClick,
+            onClick = {
+                Log.d("ControlPanel", "🔘 Клик по кнопке: $label")
+                onClick()
+            },
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (isActive) activeColor else Color.Gray
             ),
@@ -202,16 +304,18 @@ private fun ControlButton(
         }
         Text(
             text = label,
-            modifier = Modifier.padding(top = 4.dp)
+            modifier = Modifier.padding(top = 4.dp),
+            fontSize = 12.sp
         )
     }
 }
 
-private fun checkBluetoothConnection(context: Context, bluetoothHelper: BluetoothHelper): Boolean {
+private fun checkConnection(context: Context, bluetoothHelper: BluetoothHelper): Boolean {
     return if (bluetoothHelper.isDeviceConnected) {
         true
     } else {
-        Toast.makeText(context, "Bluetooth не подключен", Toast.LENGTH_SHORT).show()
+        Log.w("ControlPanel", "❌ Bluetooth не подключен")
+        Toast.makeText(context, "❌ Подключите Bluetooth устройство", Toast.LENGTH_SHORT).show()
         false
     }
 }

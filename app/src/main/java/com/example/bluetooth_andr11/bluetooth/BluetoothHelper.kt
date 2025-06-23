@@ -52,9 +52,10 @@ class BluetoothHelper(private val context: Context) {
     private val sharedPrefs =
         context.getSharedPreferences("bluetooth_helper_prefs", Context.MODE_PRIVATE)
 
+
     init {
-        clearSimulationDataIfRelease() // Сначала очищаем если RELEASE
-        restoreSimulationState()       // Потом восстанавливаем если DEBUG
+        clearSimulationDataIfRelease()
+        restoreSimulationState()
     }
 
     // === ПУБЛИЧНЫЕ МЕТОДЫ ===
@@ -86,7 +87,6 @@ class BluetoothHelper(private val context: Context) {
         builder.show()
     }
 
-    // ✅ ИСПРАВЛЕНО: Добавлена аннотация и дополнительные проверки
     @Suppress("MissingPermission")
     fun connectToDevice(device: BluetoothDevice, onConnectionResult: (Boolean, String) -> Unit) {
         if (!hasBluetoothPermission()) {
@@ -101,7 +101,6 @@ class BluetoothHelper(private val context: Context) {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // ✅ ДОПОЛНИТЕЛЬНАЯ проверка перед вызовом
                 if (!hasBluetoothConnectPermission()) {
                     withContext(Dispatchers.Main) {
                         onConnectionResult(false, "Нет разрешения BLUETOOTH_CONNECT")
@@ -140,11 +139,16 @@ class BluetoothHelper(private val context: Context) {
 
     fun listenForData(onDataReceived: (String) -> Unit) {
         if (isConnected && inputStream != null) {
-            startListening(onDataReceived) // 🔥 ИСПРАВЛЕНО: Передаем параметр
+            startListening(onDataReceived)
         }
     }
 
+    /**
+     * Прямая отправка команды (для обратной совместимости и внутреннего использования)
+     */
     fun sendCommand(command: String) {
+        Log.d(TAG, "📤 Прямая отправка команды: $command")
+
         if (simulationMode) {
             arduinoSimulator?.handleCommand(command)
             return
@@ -156,9 +160,15 @@ class BluetoothHelper(private val context: Context) {
         }
 
         try {
-            outputStream?.write(command.toByteArray())
+            val commandWithNewline = "$command\n"
+            outputStream?.write(commandWithNewline.toByteArray())
+            outputStream?.flush()
+
+            Log.d(TAG, "✅ Команда отправлена: '$command'")
         } catch (e: IOException) {
             Log.e(TAG, "Ошибка отправки команды: ${e.message}")
+            isConnected = false
+            closeConnection()
         }
     }
 
@@ -249,7 +259,6 @@ class BluetoothHelper(private val context: Context) {
     // === МЕТОДЫ СИМУЛЯЦИИ ===
 
     fun enableSimulationMode(enable: Boolean) {
-        // 🔥 ИСПРАВЛЕНИЕ: Запрещаем включение симуляции в RELEASE
         if (!BuildConfig.DEBUG && enable) {
             Log.w(TAG, "RELEASE режим: попытка включить симуляцию заблокирована")
             Toast.makeText(context, "Симуляция недоступна в релизной версии", Toast.LENGTH_SHORT)
@@ -323,7 +332,6 @@ class BluetoothHelper(private val context: Context) {
 
     // === ПРИВАТНЫЕ МЕТОДЫ ===
 
-    // ✅ ИСПРАВЛЕНО: Добавлена аннотация
     @Suppress("MissingPermission")
     private fun getPairedDevices(): Set<BluetoothDevice>? {
         return try {
@@ -339,7 +347,6 @@ class BluetoothHelper(private val context: Context) {
         }
     }
 
-    // ✅ ИСПРАВЛЕНО: Добавлена аннотация
     @Suppress("MissingPermission")
     private fun getDeviceName(device: BluetoothDevice): String {
         return try {
@@ -354,7 +361,6 @@ class BluetoothHelper(private val context: Context) {
         }
     }
 
-    // ✅ ИСПРАВЛЕНО: Добавлена аннотация
     @Suppress("MissingPermission")
     private fun getDeviceUuid(device: BluetoothDevice): UUID? {
         return try {
@@ -374,23 +380,35 @@ class BluetoothHelper(private val context: Context) {
         if (!isConnected || inputStream == null || isListening) return
 
         isListening = true
+        Log.d(TAG, "🎧 Начинаем прослушивание Bluetooth данных")
+
         CoroutineScope(Dispatchers.IO).launch {
             val buffer = ByteArray(1024)
             val dataBuffer = StringBuilder()
 
             try {
-                while (isConnected) {
+                while (isConnected && isListening) {
                     val bytes = inputStream?.read(buffer) ?: break
                     if (bytes > 0) {
-                        dataBuffer.append(String(buffer, 0, bytes))
+                        val newData = String(buffer, 0, bytes)
+                        dataBuffer.append(newData)
+
+//                        Log.d(TAG, "📨 Получены байты: $bytes, данные: '$newData'")
+
                         processBufferedData(dataBuffer, onDataReceived)
                     }
+
+                    kotlinx.coroutines.delay(10)
                 }
             } catch (e: IOException) {
-                Log.e(TAG, "Ошибка чтения данных: ${e.message}")
-                closeConnection()
+                Log.e(TAG, "❌ Ошибка чтения данных: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    isConnected = false
+                    closeConnection()
+                }
             } finally {
                 isListening = false
+                Log.d(TAG, "🔇 Прослушивание остановлено")
             }
         }
     }
@@ -402,24 +420,28 @@ class BluetoothHelper(private val context: Context) {
         val data = buffer.toString()
         val lines = data.split("\n")
 
-        // Обрабатываем все полные строки кроме последней
         for (i in 0 until lines.size - 1) {
             val line = lines[i].trim()
-            if (line.isNotEmpty() && isValidArduinoData(line)) {
-                withContext(Dispatchers.Main) {
-                    onDataReceived?.invoke(line) ?: (context as? MainActivity)?.handleReceivedData(
-                        line
-                    )
+            if (line.isNotEmpty()) {
+//                Log.d(TAG, "📦 Получена строка: '$line'")
+
+                if (isValidArduinoData(line)) {
+                    Log.d(TAG, "✅ Валидные данные Arduino: '$line'")
+                    withContext(Dispatchers.Main) {
+                        onDataReceived?.invoke(line)
+                            ?: (context as? MainActivity)?.handleReceivedData(line)
+                    }
+                } else {
+                    Log.w(TAG, "❌ Невалидные данные: '$line' (параметров: ${line.split(",").size})")
                 }
             }
         }
 
-        // Сохраняем неполную строку
         buffer.clear()
         buffer.append(lines.last())
 
-        // Защита от переполнения буфера
         if (buffer.length > 200) {
+            Log.w(TAG, "⚠️ Буфер переполнен, очищаем")
             buffer.clear()
         }
     }
@@ -434,15 +456,14 @@ class BluetoothHelper(private val context: Context) {
             val temp2 = parts[2].trim()
             val closed = parts[3].trim().toIntOrNull() ?: return false
             val state = parts[4].trim().toIntOrNull() ?: return false
-            val overload = parts[5].trim().toFloatOrNull()
-                ?: return false // 🔥 ИСПРАВЛЕНО: Используем переменную
+            val overload = parts[5].trim().toFloatOrNull() ?: return false
 
             battery in 0..100 &&
                     (temp1 == "er" || temp1.toFloatOrNull() != null) &&
                     (temp2 == "er" || temp2.toFloatOrNull() != null) &&
                     closed in 0..1 &&
                     state >= 0 &&
-                    overload >= 0.0f // 🔥 ДОБАВЛЕНО: Проверяем overload
+                    overload >= 0.0f
         } catch (e: Exception) {
             false
         }
@@ -483,9 +504,7 @@ class BluetoothHelper(private val context: Context) {
     }
 
     private fun restoreSimulationState() {
-        // 🔥 ИСПРАВЛЕНИЕ: Симуляция доступна только в DEBUG режиме
         if (!BuildConfig.DEBUG) {
-            // В RELEASE режиме принудительно отключаем симуляцию
             sharedPrefs.edit()
                 .putBoolean("simulation_enabled", false)
                 .apply()
@@ -523,6 +542,18 @@ class BluetoothHelper(private val context: Context) {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * ✅ НОВОЕ: Очистка ресурсов CommandManager
+     */
+    fun cleanup() {
+        try {
+            stopArduinoSimulation()
+            Log.d(TAG, "🧹 BluetoothHelper очищен")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка очистки BluetoothHelper: ${e.message}")
         }
     }
 
