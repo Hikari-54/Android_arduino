@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -101,4 +102,71 @@ fun MapScreen(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(16.dp))
     }
+}
+
+@Composable
+fun FullWidthMapScreen(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val mapView = remember { MapModule.initializeMap(context) }
+
+    // Переменная для управления состоянием слежения
+    var isFollowing by remember { mutableStateOf(false) }
+
+    // Иконка пользователя всегда видима
+    LaunchedEffect(mapView) {
+        MapModule.initializeLocationOverlay(context, mapView)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            MapModule.disableLocationUpdates(context)
+        }
+    }
+
+    // 🔥 Карта без внутренних отступов
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier.fillMaxSize().clip(RectangleShape) // Убираем все padding
+    ) {
+        AndroidView(
+            factory = { mapView },
+            modifier = Modifier.fillMaxSize() // Карта занимает весь контейнер
+        )
+
+        // Кнопка центрирования в правом нижнем углу
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp) // Только отступ от края экрана
+                .width(40.dp)
+                .height(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.White.copy(alpha = 0.9f))
+                .clickable {
+                    if (!isFollowing) {
+                        MapModule.enableFollowLocationOverlay(mapView)
+                        isFollowing = true
+                        Toast
+                            .makeText(context, "Слежение включено", Toast.LENGTH_SHORT)
+                            .show()
+                    } else {
+                        MapModule.disableFollowLocationOverlay(mapView)
+                        isFollowing = false
+                        Toast
+                            .makeText(context, "Слежение отключено", Toast.LENGTH_SHORT)
+                            .show()
+                    }
+                }
+        ) {
+            androidx.compose.material3.Icon(
+                painter = androidx.compose.ui.res.painterResource(id = R.drawable.baseline_center_focus_strong_24),
+                contentDescription = "Центрирование",
+                tint = Color.Black,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+
+
 }

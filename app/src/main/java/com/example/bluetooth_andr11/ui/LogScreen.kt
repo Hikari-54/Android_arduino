@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.bluetooth_andr11.ui.auth.PasswordManager
 import com.example.bluetooth_andr11.ui.auth.PasswordProtectedContent
+import com.example.bluetooth_andr11.ui.control.CardButton
 import com.example.bluetooth_andr11.ui.map_log.MapModal
 import com.example.bluetooth_andr11.utils.LogHelper.filterLogEntries
 import java.text.SimpleDateFormat
@@ -75,35 +77,25 @@ private fun LogScreenContent(navController: NavController) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(
+            CardButton(
+                text = "Назад",
                 onClick = { navController.popBackStack() },
-                modifier = Modifier.weight(1f),
-                colors = customButtonColors()
-            ) {
-                Text(text = "Назад")
-            }
+                modifier = Modifier.weight(1f)
+            )
 
             Spacer(modifier = Modifier.padding(horizontal = 4.dp))
 
-            // 🔥 ИСПРАВЛЕНО: Правильный выход с сбросом аутентификации
-            Button(
+            CardButton(
+                text = "🔒 Выйти",
                 onClick = {
-                    // Сбрасываем сессию аутентификации
                     PasswordManager.setSessionActive(context, false)
-                    // Возвращаемся назад
                     navController.popBackStack()
-
-                    Log.d("LogScreen", "🔒 Пользователь вышел из защищенной области")
                 },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF8B4513)
-                )
-            ) {
-                Text(text = "🔒 Выйти", color = Color.White)
-            }
+                backgroundColor = Color(0xFF8B4513), // Коричневый для выхода
+                modifier = Modifier.weight(1f)
+            )
         }
 
         // Фильтр логов
@@ -170,25 +162,24 @@ private fun LogScreenContent(navController: NavController) {
                     )
 
                     // Кнопка карты
-                    Button(
+                    CardButton(
+                        text = "Карта",
                         onClick = {
                             if (coordinates != null) {
                                 selectedCoordinates = coordinates
                                 selectedEventTitle = eventInfo.event
                                 showMapModal = true
-                                Log.d("LogScreen", "🗺️ Открываем карту для: ${eventInfo.event}")
                             } else {
                                 Toast.makeText(
                                     context,
-                                    "Координаты недоступны для этого события",
+                                    "Координаты недоступны",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
                         },
-                        colors = customButtonColors()
-                    ) {
-                        Text("Карта", fontSize = 11.sp)
-                    }
+                        fontSize = 11,
+                        modifier = Modifier.width(70.dp)
+                    )
                 }
             }
         }
@@ -322,45 +313,61 @@ fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
     var startDate by remember { mutableStateOf(today) }
     var endDate by remember { mutableStateOf(today) }
 
+    // 🔥 ОБНОВЛЕННАЯ компоновка с равномерным распределением
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(12.dp) // Равномерные отступы
     ) {
+        // Левая колонка с выбором дат
         Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Top
+            modifier = Modifier.weight(2f), // 🔥 Больше места для дат
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            DatePickerButton("Начальная дата", startDate) { selectedDate ->
+            DatePickerCardButton(
+                label = "От ",
+                date = startDate
+            ) { selectedDate ->
                 startDate = selectedDate
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            DatePickerButton("Конечная дата", endDate) { selectedDate ->
+
+            DatePickerCardButton(
+                label = "До ",
+                date = endDate
+            ) { selectedDate ->
                 endDate = selectedDate
             }
         }
 
-        Button(
-            onClick = {
-                if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
-                    Log.d("LogScreen", "🔍 Фильтрация логов: $startDate - $endDate")
-                    onFilterApplied(startDate, endDate)
-                }
-            },
-            modifier = Modifier.align(Alignment.CenterVertically),
-            colors = customButtonColors()
+        // Правая колонка с кнопкой фильтрации
+        Column(
+            modifier = Modifier.weight(1f), // 🔥 Меньше места для кнопки
+            verticalArrangement = Arrangement.Center
         ) {
-            Text("Отфильтровать")
+            CardButton(
+                text = "Показать",
+                onClick = {
+                    if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
+                        onFilterApplied(startDate, endDate)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
 
 @Composable
-fun DatePickerButton(label: String, date: String, onDateSelected: (String) -> Unit) {
+fun DatePickerCardButton(
+    label: String,
+    date: String,
+    onDateSelected: (String) -> Unit
+) {
     val context = LocalContext.current
     val calendar = Calendar.getInstance()
 
+    // Парсинг даты для DatePickerDialog
     val year = date.substring(0, 4).toIntOrNull() ?: calendar.get(Calendar.YEAR)
     val month = date.substring(5, 7).toIntOrNull()?.minus(1) ?: calendar.get(Calendar.MONTH)
     val day = date.substring(8, 10).toIntOrNull() ?: calendar.get(Calendar.DAY_OF_MONTH)
@@ -380,11 +387,26 @@ fun DatePickerButton(label: String, date: String, onDateSelected: (String) -> Un
         year, month, day
     )
 
-    Button(
+    // 🔥 Используем CardButton стиль для выбора даты
+    CardButton(
+        text = label + formatDateForDisplay(date),
         onClick = { datePickerDialog.show() },
-        colors = customButtonColors()
-    ) {
-        Text(text = if (date.isEmpty()) label else "Дата: $date")
+        fontSize = 14,
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+// Функция форматирования даты для отображения
+fun formatDateForDisplay(date: String): String {
+    return try {
+        val parts = date.split("-")
+        if (parts.size >= 3) {
+            "${parts[2]}.${parts[1]}.${parts[0]}" // dd.MM.yyyy
+        } else {
+            date
+        }
+    } catch (e: Exception) {
+        date
     }
 }
 
