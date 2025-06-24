@@ -3,8 +3,10 @@ package com.example.bluetooth_andr11.ui
 import android.app.DatePickerDialog
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,10 +14,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,9 +28,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -74,18 +81,15 @@ private fun LogScreenContent(navController: NavController) {
     ) {
         // Верхняя панель с кнопками
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             CardButton(
-                text = "Назад",
+                text = "◀ Назад",
                 onClick = { navController.popBackStack() },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(2f),
+                fontSize = 14
             )
-
-            Spacer(modifier = Modifier.padding(horizontal = 4.dp))
 
             CardButton(
                 text = "🔒 Выйти",
@@ -93,8 +97,9 @@ private fun LogScreenContent(navController: NavController) {
                     PasswordManager.setSessionActive(context, false)
                     navController.popBackStack()
                 },
-                backgroundColor = Color(0xFF8B4513), // Коричневый для выхода
-                modifier = Modifier.weight(1f)
+                backgroundColor = Color(0xFF8B4513),
+                modifier = Modifier.weight(1f),
+                fontSize = 14
             )
         }
 
@@ -103,7 +108,6 @@ private fun LogScreenContent(navController: NavController) {
             startDate = start
             endDate = end
             val rawEntries = filterLogEntries(context, start, end)
-            // Сортируем записи от новых к старым
             logEntries = sortLogEntriesByDateDescending(rawEntries)
             Log.d("LogScreen", "📊 Загружено и отсортировано ${logEntries.size} записей")
         }
@@ -119,93 +123,242 @@ private fun LogScreenContent(navController: NavController) {
             )
         }
 
-        // Таблица с логами (отсортированными от новых к старым)
+        // 🔥 УЛУЧШЕННАЯ таблица с логами
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 8.dp)
+                .padding(top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp) // Отступы между строками
         ) {
             items(logEntries) { entry ->
                 val coordinates = parseCoordinatesFromLogEntry(entry)
                 val eventInfo = parseEventFromLogEntry(entry)
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp, horizontal = 8.dp)
-                        .border(1.dp, Color.Gray)
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    // Дата и время
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = eventInfo.date,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = eventInfo.time,
-                            fontSize = 11.sp,
-                            color = Color.Gray
-                        )
+                // 🔥 НОВАЯ красивая строка таблицы
+                LogTableRow(
+                    eventInfo = eventInfo,
+                    coordinates = coordinates,
+                    onMapClick = { coords, title ->
+                        selectedCoordinates = coords
+                        selectedEventTitle = title
+                        showMapModal = true
+                    },
+                    onNoCoordinates = {
+                        Toast.makeText(
+                            context,
+                            "Координаты недоступны для этого события",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
-
-                    // Событие
-                    Text(
-                        text = eventInfo.event,
-                        modifier = Modifier
-                            .weight(2f)
-                            .padding(start = 8.dp),
-                        fontSize = 13.sp
-                    )
-
-                    // Кнопка карты
-                    CardButton(
-                        text = "Карта",
-                        onClick = {
-                            if (coordinates != null) {
-                                selectedCoordinates = coordinates
-                                selectedEventTitle = eventInfo.event
-                                showMapModal = true
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "Координаты недоступны",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        fontSize = 11,
-                        modifier = Modifier.width(70.dp)
-                    )
-                }
+                )
             }
         }
     }
 }
 
-// Функция для сортировки логов от новых к старым
+// 🔥 НОВЫЙ компонент строки таблицы
+@Composable
+private fun LogTableRow(
+    eventInfo: EventInfo,
+    coordinates: Pair<Double, Double>?,
+    onMapClick: (Pair<Double, Double>, String) -> Unit,
+    onNoCoordinates: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // 🔥 ДАТА - компактная колонка (15% ширины)
+        DateTimeColumn(
+            date = eventInfo.date,
+            time = eventInfo.time,
+            modifier = Modifier.width(60.dp)
+        )
+
+        // 🔥 СООБЩЕНИЕ - основная колонка (70% ширины)
+        MessageColumn(
+            message = eventInfo.event,
+            modifier = Modifier.weight(1f)
+        )
+
+        // 🔥 КНОПКА КАРТЫ - красивая иконка (15% ширины)
+        MapButton(
+            hasCoordinates = coordinates != null,
+            onClick = {
+                if (coordinates != null) {
+                    onMapClick(coordinates, eventInfo.event)
+                } else {
+                    onNoCoordinates()
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun DateTimeColumn(
+    date: String,
+    time: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Дата (крупнее)
+        Text(
+            text = date,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF333333),
+            textAlign = TextAlign.Center
+        )
+
+        // Время (мельче и серым)
+        Text(
+            text = time.take(5), // Только HH:MM без секунд
+            fontSize = 11.sp,
+            color = Color(0xFF888888),
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun MessageColumn(
+    message: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = message,
+            fontSize = 14.sp,
+            color = Color(0xFF333333),
+            lineHeight = 18.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        // 🔥 Категория события как тег (если есть)
+        val category = extractCategoryFromMessage(message)
+        if (category.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            CategoryTag(category = category)
+        }
+    }
+}
+
+@Composable
+private fun CategoryTag(category: String) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = getCategoryColor(category).copy(alpha = 0.15f),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = category,
+            fontSize = 10.sp,
+            color = getCategoryColor(category),
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun MapButton(
+    hasCoordinates: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                brush = if (hasCoordinates) {
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF4CAF50),
+                            Color(0xFF45A049)
+                        )
+                    )
+                } else {
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFE0E0E0),
+                            Color(0xFFCCCCCC)
+                        )
+                    )
+                }
+            )
+            .clickable(enabled = hasCoordinates) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        if (hasCoordinates) {
+            // Иконка карты для доступных координат
+            Text(
+                text = "🗺️",
+                fontSize = 20.sp
+            )
+        } else {
+            // Иконка "недоступно" для событий без координат
+            Text(
+                text = "📍",
+                fontSize = 16.sp,
+                color = Color(0xFF999999)
+            )
+        }
+    }
+}
+
+// 🔥 ВСПОМОГАТЕЛЬНЫЕ функции
+private fun extractCategoryFromMessage(message: String): String {
+    val regex = Regex("^([А-Яа-яA-Za-z0-9_\\s]+):")
+    val match = regex.find(message)
+    return match?.groupValues?.get(1)?.trim() ?: ""
+}
+
+private fun getCategoryColor(category: String): Color {
+    return when (category.uppercase()) {
+        "ДЕЙСТВИЕ" -> Color(0xFF2196F3)
+        "СИСТЕМА" -> Color(0xFF4CAF50)
+        "БАТАРЕЯ" -> Color(0xFFFF9800)
+        "ТЕМПЕРАТУРА" -> Color(0xFFF44336)
+        "GPS" -> Color(0xFF9C27B0)
+        "ДАТЧИК_ХОЛЛА" -> Color(0xFF607D8B)
+        "АКСЕЛЕРОМЕТР" -> Color(0xFFFF5722)
+        "ТЕСТ" -> Color(0xFFE91E63)
+        "ОТЛАДКА" -> Color(0xFF795548)
+        else -> Color(0xFF757575)
+    }
+}
+
+// Остальные функции остаются без изменений...
 fun sortLogEntriesByDateDescending(logEntries: List<String>): List<String> {
     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
     return logEntries.sortedByDescending { entry ->
         try {
-            // Извлекаем timestamp из начала строки
             val timestampPart = entry.substringBefore(" -").trim()
             val parsedDate = dateFormat.parse(timestampPart)
 
             if (parsedDate != null) {
                 Log.d("LogScreen", "✅ Дата распарсена: $timestampPart -> ${parsedDate.time}")
-                parsedDate.time // Возвращаем timestamp для сортировки
+                parsedDate.time
             } else {
                 Log.w("LogScreen", "⚠️ Не удалось распарсить дату: $timestampPart")
-                0L // Если не удалось распарсить, помещаем в конец
+                0L
             }
         } catch (e: Exception) {
             Log.e("LogScreen", "❌ Ошибка парсинга даты в строке: $entry, ошибка: ${e.message}")
-            0L // В случае ошибки помещаем в конец
+            0L
         }
     }.also { sortedList ->
         if (sortedList.isNotEmpty()) {
@@ -216,10 +369,8 @@ fun sortLogEntriesByDateDescending(logEntries: List<String>): List<String> {
     }
 }
 
-// Функция для парсинга координат
 fun parseCoordinatesFromLogEntry(logEntry: String): Pair<Double, Double>? {
     try {
-        // Ищем координаты после символа @
         val coordinatesPart = logEntry.substringAfter("@", "").trim()
 
         if (coordinatesPart.isEmpty() || coordinatesPart.contains("Координаты недоступны") || coordinatesPart.contains(
@@ -229,10 +380,7 @@ fun parseCoordinatesFromLogEntry(logEntry: String): Pair<Double, Double>? {
             return null
         }
 
-        // Извлекаем числовую часть до скобки
         val coordsOnly = coordinatesPart.substringBefore("(").trim()
-
-        // Надежный парсинг: Ищем все числа с плавающей точкой в строке
         val numberPattern = Regex("""(\d+[.,]\d+)""")
         val numbers = numberPattern.findAll(coordsOnly).map {
             it.value.replace(",", ".").toDoubleOrNull()
@@ -242,21 +390,18 @@ fun parseCoordinatesFromLogEntry(logEntry: String): Pair<Double, Double>? {
             val latitude = numbers[0]
             val longitude = numbers[1]
 
-            // Проверяем диапазоны
             if (latitude in -90.0..90.0 && longitude in -180.0..180.0) {
                 return Pair(latitude, longitude)
             }
         }
 
         return null
-
     } catch (e: Exception) {
         Log.e("LogScreen", "❌ Ошибка парсинга координат: ${e.message}")
         return null
     }
 }
 
-// Функция для парсинга информации о событии
 data class EventInfo(
     val date: String,
     val time: String,
@@ -268,13 +413,9 @@ fun parseEventFromLogEntry(logEntry: String): EventInfo {
     val timestamp = parts.getOrNull(0) ?: "Неизвестная дата"
     val eventWithCoords = parts.getOrNull(1) ?: "Неизвестное событие"
 
-    // Извлекаем событие до символа @
     val eventPart = eventWithCoords.substringBefore("@").trim()
-
-    // 🔥 НОВОЕ: Убираем категорию из отображения
     val cleanEvent = removeCategoryRegex(eventPart)
 
-    // Разделяем дату и время
     val dateParts = timestamp.split(" ")
     val date = dateParts.getOrNull(0)?.let { formatDateWithoutYear(it) } ?: ""
     val time = dateParts.getOrNull(1) ?: ""
@@ -283,13 +424,10 @@ fun parseEventFromLogEntry(logEntry: String): EventInfo {
 }
 
 private fun removeCategoryRegex(eventText: String): String {
-    // 🔥 УЛУЧШЕННЫЙ regex: поддержка кириллицы, латиницы, цифр, подчеркиваний и пробелов
     val categoryPattern = Regex("^[А-Яа-яA-Za-z0-9_\\s]+:\\s*")
-
     return eventText.replaceFirst(categoryPattern, "").trim()
 }
 
-// Форматируем дату без года
 fun formatDateWithoutYear(date: String): String {
     val parts = date.split("-")
     return if (parts.size >= 3) {
@@ -313,48 +451,49 @@ fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
     var startDate by remember { mutableStateOf(today) }
     var endDate by remember { mutableStateOf(today) }
 
-    // 🔥 ОБНОВЛЕННАЯ компоновка с равномерным распределением
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp) // Равномерные отступы
+            .padding(0.dp, 8.dp, 0.dp, 0.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Левая колонка с выбором дат
-        Column(
-            modifier = Modifier.weight(2f), // 🔥 Больше места для дат
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        // Верхний ряд - две колонки по 50% для выбора дат
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             DatePickerCardButton(
-                label = "От ",
-                date = startDate
-            ) { selectedDate ->
-                startDate = selectedDate
-            }
+                label = "От",
+                date = startDate,
+                modifier = Modifier.weight(1f),
+                onDateSelected = { selectedDate ->
+                    startDate = selectedDate
+                }
+            )
 
             DatePickerCardButton(
-                label = "До ",
-                date = endDate
-            ) { selectedDate ->
-                endDate = selectedDate
-            }
-        }
-
-        // Правая колонка с кнопкой фильтрации
-        Column(
-            modifier = Modifier.weight(1f), // 🔥 Меньше места для кнопки
-            verticalArrangement = Arrangement.Center
-        ) {
-            CardButton(
-                text = "Показать",
-                onClick = {
-                    if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
-                        onFilterApplied(startDate, endDate)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
+                label = "До",
+                date = endDate,
+                modifier = Modifier.weight(1f),
+                onDateSelected = { selectedDate ->
+                    endDate = selectedDate
+                }
             )
         }
+
+        // Нижний ряд - кнопка "Показать" на всю ширину с акцентным цветом
+        CardButton(
+            text = "📋 Показать логи",
+            onClick = {
+                if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
+                    Log.d("LogScreen", "🔍 Фильтрация логов: $startDate - $endDate")
+                    onFilterApplied(startDate, endDate)
+                }
+            },
+            backgroundColor = Color(0xFF4CAF50),
+            modifier = Modifier.fillMaxWidth(),
+            fontSize = 16
+        )
     }
 }
 
@@ -362,12 +501,12 @@ fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
 fun DatePickerCardButton(
     label: String,
     date: String,
+    modifier: Modifier = Modifier,
     onDateSelected: (String) -> Unit
 ) {
     val context = LocalContext.current
     val calendar = Calendar.getInstance()
 
-    // Парсинг даты для DatePickerDialog
     val year = date.substring(0, 4).toIntOrNull() ?: calendar.get(Calendar.YEAR)
     val month = date.substring(5, 7).toIntOrNull()?.minus(1) ?: calendar.get(Calendar.MONTH)
     val day = date.substring(8, 10).toIntOrNull() ?: calendar.get(Calendar.DAY_OF_MONTH)
@@ -387,21 +526,19 @@ fun DatePickerCardButton(
         year, month, day
     )
 
-    // 🔥 Используем CardButton стиль для выбора даты
     CardButton(
-        text = label + formatDateForDisplay(date),
+        text = if (date.isEmpty()) label else "${label}: ${formatDateForDisplay(date)}",
         onClick = { datePickerDialog.show() },
-        fontSize = 14,
-        modifier = Modifier.fillMaxWidth()
+        fontSize = 13,
+        modifier = modifier
     )
 }
 
-// Функция форматирования даты для отображения
 fun formatDateForDisplay(date: String): String {
     return try {
         val parts = date.split("-")
         if (parts.size >= 3) {
-            "${parts[2]}.${parts[1]}.${parts[0]}" // dd.MM.yyyy
+            "${parts[2]}.${parts[1]}"
         } else {
             date
         }
@@ -409,9 +546,3 @@ fun formatDateForDisplay(date: String): String {
         date
     }
 }
-
-@Composable
-fun customButtonColors() = ButtonDefaults.buttonColors(
-    containerColor = Color(0xFF252525),
-    contentColor = Color.White
-)

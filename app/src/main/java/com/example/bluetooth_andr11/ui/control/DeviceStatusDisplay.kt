@@ -57,16 +57,14 @@ fun DeviceStatusDisplay(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 🔥 ИСПРАВЛЕНО: Возвращаем карточку статуса сумки
             StatusCard(
                 title = "Статус сумки",
                 value = if (hallState == "Закрыт") "Закрыта" else "Открыта",
-                color = if (hallState == "Закрыт") Color(0xFF4CAF50) else Color(0xFFFF9800),
+                color = if (hallState == "Закрыт") Color(0xFF4CAF50) else Color(0xFFD32F2F),
                 subtitle = "Датчик Холла",
                 modifier = Modifier.weight(1f)
             )
 
-            // 🔥 ИСПРАВЛЕНО: Добавляем weight(1f) для равномерного распределения
             MovementStatusCard(
                 title = "Движение",
                 acc = acc,
