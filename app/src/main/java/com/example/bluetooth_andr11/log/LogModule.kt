@@ -56,7 +56,7 @@ object LogModule {
                 ) {
 
                     val logMessage = "GPS недоступен уже ${consecutiveUnavailableCount} раз подряд"
-                    logEvent(context, "GPS СИСТЕМА: $logMessage")
+                    logEvent(context, "СИСТЕМА_GPS: $logMessage")
                     lastGpsLogTime = currentTime
                 }
             }
@@ -79,7 +79,7 @@ object LogModule {
             }
         }
 
-        logEvent(context, "GPS СИСТЕМА: $event")
+        logEvent(context, "СИСТЕМА_GPS: $event")
         Log.i(TAG, "GPS состояние изменилось: $isAvailable")
     }
 

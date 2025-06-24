@@ -278,14 +278,24 @@ fun parseEventFromLogEntry(logEntry: String): EventInfo {
     val eventWithCoords = parts.getOrNull(1) ?: "Неизвестное событие"
 
     // Извлекаем событие до символа @
-    val event = eventWithCoords.substringBefore("@").trim().ifEmpty { "Неизвестное событие" }
+    val eventPart = eventWithCoords.substringBefore("@").trim()
+
+    // 🔥 НОВОЕ: Убираем категорию из отображения
+    val cleanEvent = removeCategoryRegex(eventPart)
 
     // Разделяем дату и время
     val dateParts = timestamp.split(" ")
     val date = dateParts.getOrNull(0)?.let { formatDateWithoutYear(it) } ?: ""
     val time = dateParts.getOrNull(1) ?: ""
 
-    return EventInfo(date, time, event)
+    return EventInfo(date, time, cleanEvent)
+}
+
+private fun removeCategoryRegex(eventText: String): String {
+    // 🔥 УЛУЧШЕННЫЙ regex: поддержка кириллицы, латиницы, цифр, подчеркиваний и пробелов
+    val categoryPattern = Regex("^[А-Яа-яA-Za-z0-9_\\s]+:\\s*")
+
+    return eventText.replaceFirst(categoryPattern, "").trim()
 }
 
 // Форматируем дату без года

@@ -24,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.log.LogModule
+import com.example.bluetooth_andr11.monitoring.TemperatureMonitor
 import com.example.bluetooth_andr11.permissions.PermissionHelper
 import com.example.bluetooth_andr11.ui.LogScreen
 import com.example.bluetooth_andr11.ui.MainScreen
@@ -42,6 +43,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var permissionHelper: PermissionHelper
     private lateinit var enhancedLocationManager: EnhancedLocationManager
 
+    private lateinit var temperatureMonitor: TemperatureMonitor
+
     // Состояния UI
     private val isBluetoothEnabled = mutableStateOf(false)
     private val isDeviceConnected = mutableStateOf(false)
@@ -58,15 +61,7 @@ class MainActivity : ComponentActivity() {
     private val isLocationServiceEnabled = mutableStateOf(false)
     private val showDebugPanel = mutableStateOf(false)
 
-    /// 🔥 НОВЫЕ переменные для отслеживания пройденных порогов
     private var lastLoggedBatteryLevel = 101
-    private var lastUpperTemp: Int? = null
-    private var lastLowerTemp: Int? = null
-
-    // 🔥 ПОРОГИ которые УЖЕ были пройдены (для предотвращения дублирования)
-    private val upperTempThresholdsReached = mutableSetOf<Int>()
-    private val lowerTempThresholdsReached = mutableSetOf<Int>()
-
     private var lastLoggedBagState: String? = null
 
     private val requestPermissionsLauncher =
@@ -136,6 +131,9 @@ class MainActivity : ComponentActivity() {
             fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         )
         bluetoothHelper = BluetoothHelper(this)
+
+        // 🔥 Инициализация монитора температуры
+        temperatureMonitor = TemperatureMonitor(this, bluetoothHelper, enhancedLocationManager)
     }
 
     // Функция настройки всех мониторингов
@@ -382,32 +380,34 @@ class MainActivity : ComponentActivity() {
 
     private fun updateTemperatures(upperTempString: String, lowerTempString: String) {
         val upperTemp = if (upperTempString == "er") {
-            Log.w(TAG, "⚠️ Ошибка датчика верхнего отсека")
+            Log.w(TAG, "⚠️ Ошибка датчика горячего отсека")
             null
         } else {
             upperTempString.toFloatOrNull()
         }
 
         val lowerTemp = if (lowerTempString == "er") {
-            Log.w(TAG, "⚠️ Ошибка датчика нижнего отсека")
+            Log.w(TAG, "⚠️ Ошибка датчика холодного отсека")
             null
         } else {
             lowerTempString.toFloatOrNull()
         }
 
+        // Обновляем UI
         temp1.value = when {
             upperTempString == "er" -> "Ошибка"
             upperTemp != null -> upperTemp.toString()
-            else -> temp1.value // Сохраняем старое значение
+            else -> temp1.value
         }
 
         temp2.value = when {
             lowerTempString == "er" -> "Ошибка"
             lowerTemp != null -> lowerTemp.toString()
-            else -> temp2.value // Сохраняем старое значение
+            else -> temp2.value
         }
 
-        logTemperatureThresholds(upperTemp, lowerTemp)
+        // 🔥 ЕДИНСТВЕННАЯ СТРОКА для всего температурного мониторинга!
+        temperatureMonitor.processTemperatures(upperTemp, lowerTemp)
     }
 
     private fun updateBagState(closedState: String) {
@@ -499,202 +499,6 @@ class MainActivity : ComponentActivity() {
                 )
                 break // Логируем только один порог за раз
             }
-        }
-    }
-
-    // 🔥 ИСПРАВЛЕННАЯ функция логирования температуры
-    private fun logTemperatureThresholds(upperTemp: Float?, lowerTemp: Float?) {
-        // 🔥 ВЕРХНИЙ ОТСЕК (ГОРЯЧИЙ)
-        upperTemp?.let { temp ->
-            val tempInt = temp.toInt()
-            val previousTemp = lastUpperTemp
-            lastUpperTemp = tempInt
-
-            Log.d(TAG, "🌡️ Верхний: было=${previousTemp}°C → стало=${tempInt}°C")
-
-            if (previousTemp != null) {
-                // 🔥 ПОВЫШЕНИЕ температуры - проверяем пороги
-                if (tempInt > previousTemp) {
-                    when {
-                        tempInt >= 40 && !upperTempThresholdsReached.contains(40) -> {
-                            upperTempThresholdsReached.add(40)
-                            logCriticalTemperatureEvent("🚨 ВЕРХНИЙ ОТСЕК: Достиг 40°C! (было ${previousTemp}°C)")
-                        }
-
-                        tempInt >= 50 && !upperTempThresholdsReached.contains(50) -> {
-                            upperTempThresholdsReached.add(50)
-                            logCriticalTemperatureEvent("🔥 ВЕРХНИЙ ОТСЕК: Достиг 50°C! (было ${previousTemp}°C)")
-                        }
-
-                        tempInt >= 60 && !upperTempThresholdsReached.contains(60) -> {
-                            upperTempThresholdsReached.add(60)
-                            logCriticalTemperatureEvent("🚨 ВЕРХНИЙ ОТСЕК: Достиг 60°C! (было ${previousTemp}°C)")
-                        }
-
-                        tempInt >= 70 && !upperTempThresholdsReached.contains(70) -> {
-                            upperTempThresholdsReached.add(70)
-                            logCriticalTemperatureEvent("🔥 ВЕРХНИЙ ОТСЕК: КРИТИЧНО! Достиг 70°C! (было ${previousTemp}°C)")
-                        }
-                    }
-                }
-
-                // 🔥 ПОНИЖЕНИЕ температуры - проверяем пороги
-                if (tempInt < previousTemp) {
-                    when {
-                        tempInt <= 50 && upperTempThresholdsReached.contains(60) && !upperTempThresholdsReached.contains(
-                            -50
-                        ) -> {
-                            upperTempThresholdsReached.add(-50) // Отрицательное значение = "остыл до 50"
-                            logCriticalTemperatureEvent("❄️ ВЕРХНИЙ ОТСЕК: Остыл до 50°C (было ${previousTemp}°C)")
-                        }
-
-                        tempInt <= 40 && upperTempThresholdsReached.contains(50) && !upperTempThresholdsReached.contains(
-                            -40
-                        ) -> {
-                            upperTempThresholdsReached.add(-40)
-                            logCriticalTemperatureEvent("❄️ ВЕРХНИЙ ОТСЕК: Остыл до 40°C (было ${previousTemp}°C)")
-                        }
-
-                        tempInt <= 30 && upperTempThresholdsReached.contains(40) && !upperTempThresholdsReached.contains(
-                            -30
-                        ) -> {
-                            upperTempThresholdsReached.add(-30)
-                            logCriticalTemperatureEvent("🟢 ВЕРХНИЙ ОТСЕК: Нормализовался до 30°C (было ${previousTemp}°C)")
-                        }
-
-                        tempInt <= 25 && upperTempThresholdsReached.contains(40) && !upperTempThresholdsReached.contains(
-                            -25
-                        ) -> {
-                            upperTempThresholdsReached.add(-25)
-                            logCriticalTemperatureEvent("✅ ВЕРХНИЙ ОТСЕК: Вернулся к норме 25°C (было ${previousTemp}°C)")
-                        }
-                    }
-                }
-            }
-        }
-
-        // 🔥 НИЖНИЙ ОТСЕК (ХОЛОДНЫЙ)
-        lowerTemp?.let { temp ->
-            val tempInt = temp.toInt()
-            val previousTemp = lastLowerTemp
-            lastLowerTemp = tempInt
-
-            Log.d(TAG, "🌡️ Нижний: было=${previousTemp}°C → стало=${tempInt}°C")
-
-            if (previousTemp != null) {
-                // 🔥 ПОНИЖЕНИЕ температуры (хорошо для холодного отсека)
-                if (tempInt < previousTemp) {
-                    when {
-                        tempInt <= 15 && !lowerTempThresholdsReached.contains(15) -> {
-                            lowerTempThresholdsReached.add(15)
-                            logCriticalTemperatureEvent("❄️ НИЖНИЙ ОТСЕК: Достиг 15°C - холодовая цепь (было ${previousTemp}°C)")
-                        }
-
-                        tempInt <= 10 && !lowerTempThresholdsReached.contains(10) -> {
-                            lowerTempThresholdsReached.add(10)
-                            logCriticalTemperatureEvent("🧊 НИЖНИЙ ОТСЕК: Достиг 10°C - глубокое охлаждение (было ${previousTemp}°C)")
-                        }
-
-                        tempInt <= 5 && !lowerTempThresholdsReached.contains(5) -> {
-                            lowerTempThresholdsReached.add(5)
-                            logCriticalTemperatureEvent("🌨️ НИЖНИЙ ОТСЕК: Достиг 5°C - заморозка (было ${previousTemp}°C)")
-                        }
-
-                        tempInt <= 0 && !lowerTempThresholdsReached.contains(0) -> {
-                            lowerTempThresholdsReached.add(0)
-                            logCriticalTemperatureEvent("🧊 НИЖНИЙ ОТСЕК: Достиг 0°C - глубокая заморозка (было ${previousTemp}°C)")
-                        }
-
-                        tempInt <= -5 && !lowerTempThresholdsReached.contains(-5) -> {
-                            lowerTempThresholdsReached.add(-5)
-                            logCriticalTemperatureEvent("❄️ НИЖНИЙ ОТСЕК: Достиг -5°C - экстремальная заморозка (было ${previousTemp}°C)")
-                        }
-                    }
-                }
-
-                // 🔥 ПОВЫШЕНИЕ температуры (НАРУШЕНИЕ холодовой цепи!)
-                if (tempInt > previousTemp) {
-                    when {
-                        tempInt >= 5 && lowerTempThresholdsReached.contains(0) && !lowerTempThresholdsReached.contains(
-                            -105
-                        ) -> {
-                            lowerTempThresholdsReached.add(-105) // Отрицательное = "нагрелся до 5"
-                            logCriticalTemperatureEvent("🚨 НАРУШЕНИЕ ХОЛОДОВОЙ ЦЕПИ: Нижний отсек нагрелся до 5°C! (было ${previousTemp}°C)")
-                        }
-
-                        tempInt >= 10 && lowerTempThresholdsReached.contains(5) && !lowerTempThresholdsReached.contains(
-                            -110
-                        ) -> {
-                            lowerTempThresholdsReached.add(-110)
-                            logCriticalTemperatureEvent("🔥 КРИТИЧЕСКОЕ НАРУШЕНИЕ: Нижний отсек нагрелся до 10°C! (было ${previousTemp}°C)")
-                        }
-
-                        tempInt >= 15 && lowerTempThresholdsReached.contains(10) && !lowerTempThresholdsReached.contains(
-                            -115
-                        ) -> {
-                            lowerTempThresholdsReached.add(-115)
-                            logCriticalTemperatureEvent("⚠️ ПОТЕРЯ ОХЛАЖДЕНИЯ: Нижний отсек нагрелся до 15°C! (было ${previousTemp}°C)")
-                        }
-
-                        tempInt >= 20 && lowerTempThresholdsReached.contains(15) && !lowerTempThresholdsReached.contains(
-                            -120
-                        ) -> {
-                            lowerTempThresholdsReached.add(-120)
-                            logCriticalTemperatureEvent("🌡️ ПОЛНАЯ ПОТЕРЯ ХОЛОДА: Нижний отсек нагрелся до 20°C! (было ${previousTemp}°C)")
-                        }
-
-                        // 🔥 ДОПОЛНИТЕЛЬНО: Любое повышение с холодных температур
-                        tempInt > 0 && previousTemp <= 0 && !lowerTempThresholdsReached.contains(-200) -> {
-                            lowerTempThresholdsReached.add(-200)
-                            logCriticalTemperatureEvent("🚨 РАЗМОРАЖИВАНИЕ: Нижний отсек вышел из заморозки! ${previousTemp}°C → ${tempInt}°C")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 🔥 ФУНКЦИЯ для сброса порогов (если нужно перезапустить логирование)
-    fun resetTemperatureThresholds() {
-        upperTempThresholdsReached.clear()
-        lowerTempThresholdsReached.clear()
-        lastUpperTemp = null
-        lastLowerTemp = null
-        Log.d(TAG, "🔄 Пороги температуры сброшены")
-    }
-
-    // 🔥 КРИТИЧЕСКИЕ температурные события (БЕЗ ограничений!)
-    private fun logCriticalTemperatureEvent(message: String) {
-        Log.d(TAG, "🌡️ КРИТИЧЕСКОЕ СОБЫТИЕ: $message")
-
-        try {
-            // 🔥 ПРЯМАЯ ЗАПИСЬ В ЛОГ-ФАЙЛ (минуя все ограничения!)
-            val logDir = File(this.getExternalFilesDir(null), "logs")
-            if (!logDir.exists()) logDir.mkdirs()
-
-            val logFile = File(logDir, "events_log.txt")
-            val timestamp =
-                java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-                    .format(java.util.Date())
-
-            // Получаем координаты
-            val locationInfo = enhancedLocationManager.getLocationInfo()
-            val coordinates = if (locationInfo.coordinates != "Неизвестно") {
-                "${locationInfo.coordinates} (${locationInfo.source}, ±${locationInfo.accuracy.toInt()}м)"
-            } else {
-                "Координаты недоступны"
-            }
-
-            val logEntry = "$timestamp - ТЕМПЕРАТУРА: $message @ $coordinates\n"
-            logFile.appendText(logEntry)
-
-            Log.d(TAG, "✅ Температурное событие записано НАПРЯМУЮ в файл: $logEntry")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка прямой записи температурного лога: ${e.message}")
-
-            // Fallback - через LogModule без ограничений
-            LogModule.logEvent(this, "ТЕМПЕРАТУРА: $message")
         }
     }
 
@@ -796,26 +600,6 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "❌ Ошибка очистки ресурсов: ${e.message}")
         }
-    }
-
-    // 🔥 ОБНОВЛЕННАЯ функция для тестирования GPS
-    fun testGpsMonitoring() {
-        Log.d(TAG, "🧪 Тестирование GPS мониторинга...")
-
-        val currentState = enhancedLocationManager.forceLocationStatusCheck()
-
-        // 🔥 ИЗМЕНЕНО: Используем системное событие для тестов
-        LogModule.logSystemEvent(
-            this, bluetoothHelper, enhancedLocationManager,
-            "Тест GPS мониторинга. Состояние: ${if (currentState) "включен" else "выключен"}",
-            "ТЕСТ"
-        )
-
-        Toast.makeText(
-            this,
-            "🧪 GPS тест выполнен. Состояние: ${if (currentState) "✅" else "❌"}",
-            Toast.LENGTH_SHORT
-        ).show()
     }
 
     companion object {
