@@ -305,7 +305,7 @@ private fun SimpleButton(
         Text(
             text = label,
             modifier = Modifier.padding(top = 4.dp),
-            fontSize = 12.sp
+            fontSize = 16.sp
         )
     }
 }

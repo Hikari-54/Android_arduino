@@ -167,7 +167,6 @@ object LogModule {
         logEventWithLocation(context, bluetoothHelper, locationManager, "ДЕЙСТВИЕ: $action")
     }
 
-    // 🔥 НОВЫЙ метод для системных событий с фильтрацией
     fun logSystemEvent(
         context: Context,
         bluetoothHelper: BluetoothHelper,
@@ -175,12 +174,21 @@ object LogModule {
         event: String,
         category: String = "СИСТЕМА"
     ) {
-        // Системные события логируются с ограничением
-        logEventWithLimit(
-            context, bluetoothHelper, locationManager,
-            "$category: $event",
-            timeLimitSeconds = 300 // 5 минут между системными событиями
-        )
+        // 🔥 СПЕЦИАЛЬНАЯ ОБРАБОТКА для температурных событий
+        if (category == "ТЕМПЕРАТУРА") {
+            // Температурные события логируются БЕЗ ограничений!
+            logEventWithLocation(
+                context, bluetoothHelper, locationManager,
+                "$category: $event", critical = true
+            )
+        } else {
+            // Остальные системные события - с ограничением
+            logEventWithLimit(
+                context, bluetoothHelper, locationManager,
+                "$category: $event",
+                timeLimitSeconds = 60 // Уменьшили с 300 до 60 секунд
+            )
+        }
     }
 
     // Устаревшие методы для обратной совместимости

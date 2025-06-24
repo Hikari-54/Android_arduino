@@ -121,20 +121,22 @@ class ArduinoSimulator(
         val battery = batteryPercent.coerceIn(0, 100)
 
         // 2. Hot temperature (upper compartment) - может быть "er" при ошибке
-        val temp1 = if (currentScenario == SimulationScenario.SENSOR_ERRORS && scenarioStep % 10 < 3) {
-            "er"
-        } else {
-            // 🔥 ИСПРАВЛЕНИЕ: Принудительно используем US локаль (точка как разделитель)
-            String.format(Locale.US, "%.2f", tempHot)
-        }
+        val temp1 =
+            if (currentScenario == SimulationScenario.SENSOR_ERRORS && scenarioStep % 10 < 3) {
+                "er"
+            } else {
+                // 🔥 ИСПРАВЛЕНИЕ: Принудительно используем US локаль (точка как разделитель)
+                String.format(Locale.US, "%.2f", tempHot)
+            }
 
         // 3. Cold temperature (lower compartment) - может быть "er" при ошибке
-        val temp2 = if (currentScenario == SimulationScenario.SENSOR_ERRORS && scenarioStep % 7 < 2) {
-            "er"
-        } else {
-            // 🔥 ИСПРАВЛЕНИЕ: Принудительно используем US локаль (точка как разделитель)
-            String.format(Locale.US, "%.2f", tempCold)
-        }
+        val temp2 =
+            if (currentScenario == SimulationScenario.SENSOR_ERRORS && scenarioStep % 7 < 2) {
+                "er"
+            } else {
+                // 🔥 ИСПРАВЛЕНИЕ: Принудительно используем US локаль (точка как разделитель)
+                String.format(Locale.US, "%.2f", tempCold)
+            }
 
         // 4. Closed state (0 = open, 1 = closed)
         val closedState = if (bagClosed) 1 else 0
@@ -150,7 +152,10 @@ class ArduinoSimulator(
         val result = "$battery,$temp1,$temp2,$closedState,$currentState,$overloadValue"
 
         Log.d("ArduinoSimulator", "Генерируем данные: $result")
-        Log.d("ArduinoSimulator", "🎯 ТОЧНЫЙ РЕЗУЛЬТАТ: '$result' (параметров: ${result.split(",").size})")
+        Log.d(
+            "ArduinoSimulator",
+            "🎯 ТОЧНЫЙ РЕЗУЛЬТАТ: '$result' (параметров: ${result.split(",").size})"
+        )
 
         return result
     }
@@ -250,29 +255,29 @@ class ArduinoSimulator(
     }
 
     private fun updateCoolingCycleState() {
-        // Цикл охлаждения за 45 секунд (150 шагов)
+        // 🔥 УСКОРЕННЫЙ цикл охлаждения за 30 секунд (100 шагов)
         when {
-            scenarioStep < 33 -> {
+            scenarioStep < 20 -> {
                 coolActive = false
-                tempCold = 15.0f - scenarioStep * 0.2f // Медленное остывание 15°C -> 8°C
+                tempCold = 15.0f - scenarioStep * 0.5f // Быстрое остывание 15°C → 5°C
             }
 
-            scenarioStep < 83 -> {
+            scenarioStep < 50 -> {
                 coolActive = true
-                // Быстрое охлаждение до 2°C
-                tempCold = 8.0f - (scenarioStep - 33) * 0.12f
+                // 🔥 БЫСТРОЕ охлаждение до -2°C
+                tempCold = 5.0f - (scenarioStep - 20) * 0.23f // 5°C → -2°C за 30 шагов
             }
 
-            scenarioStep < 117 -> {
+            scenarioStep < 70 -> {
                 coolActive = true
-                // Стабилизация около 2°C
-                tempCold = 2.0f + Random.nextFloat() * 3f - 1.5f
+                // Стабилизация около -2°C
+                tempCold = -2.0f + Random.nextFloat() * 2f - 1f // -3°C до -1°C
             }
 
-            scenarioStep < 150 -> {
+            scenarioStep < 100 -> {
                 coolActive = false
-                // Нагревание
-                tempCold = (tempCold + 0.3f).coerceAtMost(15.0f)
+                // 🔥 БЫСТРЫЙ нагрев обратно
+                tempCold = (tempCold + 0.8f).coerceAtMost(20.0f) // Быстрый рост до 20°C
             }
 
             else -> {
@@ -281,7 +286,7 @@ class ArduinoSimulator(
         }
 
         // Потребление батареи при охлаждении
-        if (coolActive && scenarioStep % 8 == 0) {
+        if (coolActive && scenarioStep % 6 == 0) {
             batteryPercent = (batteryPercent - 1).coerceAtLeast(0)
         }
 

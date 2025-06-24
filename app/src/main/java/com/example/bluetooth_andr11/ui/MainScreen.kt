@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.ui.control.ControlPanel
@@ -95,7 +96,10 @@ fun MainScreen(
             // Кнопка перехода на экран логов
             item {
                 Button(onClick = onNavigateToLogs, colors = customButtonColors()) {
-                    Text(text = "Показать логи")
+                    Text(
+                        text = "Показать логи",
+                        fontSize = 16.sp
+                    )
                 }
             }
         }

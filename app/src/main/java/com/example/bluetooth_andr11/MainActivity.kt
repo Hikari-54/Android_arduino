@@ -58,10 +58,15 @@ class MainActivity : ComponentActivity() {
     private val isLocationServiceEnabled = mutableStateOf(false)
     private val showDebugPanel = mutableStateOf(false)
 
-    // Кеш для предотвращения дублирования логов
-    private var lastLoggedBatteryLevel = -1
-    private var lastUpperLoggedTemp: Float? = null
-    private var lastLowerLoggedTemp: Float? = null
+    /// 🔥 НОВЫЕ переменные для отслеживания пройденных порогов
+    private var lastLoggedBatteryLevel = 101
+    private var lastUpperTemp: Int? = null
+    private var lastLowerTemp: Int? = null
+
+    // 🔥 ПОРОГИ которые УЖЕ были пройдены (для предотвращения дублирования)
+    private val upperTempThresholdsReached = mutableSetOf<Int>()
+    private val lowerTempThresholdsReached = mutableSetOf<Int>()
+
     private var lastLoggedBagState: String? = null
 
     private val requestPermissionsLauncher =
@@ -216,7 +221,9 @@ class MainActivity : ComponentActivity() {
                             launchSingleTop = true
                         }
                         showDebugPanel.value = false
-                    }
+                    },
+                    // 🔥 ДОБАВЛЕННЫЙ параметр для скрытия Bluetooth в режиме симуляции
+                    bluetoothHelper = bluetoothHelper
                 )
             }
         ) { innerPadding ->
@@ -465,63 +472,229 @@ class MainActivity : ComponentActivity() {
         accelerometerData.value = "$shakeCategory (${String.format("%.2f", accelerometerValue)})"
     }
 
-    // 🔥 ОБНОВЛЕННАЯ функция логирования батареи
+    // 🔥 ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ функция логирования батареи
     private fun logBatteryThresholds(batteryValue: Int) {
-        val thresholds = listOf(5, 10, 25, 50)
-        val threshold = thresholds.find { batteryValue < it && lastLoggedBatteryLevel >= it }
+        Log.d(
+            TAG,
+            "🔋 Проверка батареи: текущий=$batteryValue%, последний зафиксированный=$lastLoggedBatteryLevel%"
+        )
 
-        threshold?.let {
-            lastLoggedBatteryLevel = it
-            val message = when (it) {
-                5 -> "Критически низкий уровень заряда (<5%)"
-                10 -> "Очень низкий уровень заряда (<10%)"
-                25 -> "Низкий уровень заряда (<25%)"
-                50 -> "Уровень заряда менее половины (<50%)"
-                else -> return
+        // Проверяем понижение уровня батареи
+        val downwardThresholds = listOf(50, 30, 15, 5)
+        for (threshold in downwardThresholds) {
+            if (batteryValue <= threshold && lastLoggedBatteryLevel > threshold) {
+                lastLoggedBatteryLevel = threshold
+                val message = when (threshold) {
+                    5 -> "🚨 КРИТИЧЕСКИ низкий уровень заряда (≤5%)"
+                    15 -> "⚠️ Очень низкий уровень заряда (≤15%)"
+                    30 -> "⚡ Низкий уровень заряда (≤30%)"
+                    50 -> "🔋 Уровень заряда менее половины (≤50%)"
+                    else -> continue
+                }
+
+                Log.d(TAG, "🔋 Логируем пороговое событие батареи: $message")
+                LogModule.logSystemEvent(
+                    this, bluetoothHelper, enhancedLocationManager,
+                    message, "БАТАРЕЯ"
+                )
+                break // Логируем только один порог за раз
             }
-
-            // 🔥 ИЗМЕНЕНО: Используем системное событие для батареи
-            LogModule.logSystemEvent(
-                this, bluetoothHelper, enhancedLocationManager,
-                message, "БАТАРЕЯ"
-            )
         }
     }
 
-    // 🔥 ОБНОВЛЕННАЯ функция логирования температуры
+    // 🔥 ИСПРАВЛЕННАЯ функция логирования температуры
     private fun logTemperatureThresholds(upperTemp: Float?, lowerTemp: Float?) {
-        // Логирование температуры верхнего отсека
+        // 🔥 ВЕРХНИЙ ОТСЕК (ГОРЯЧИЙ)
         upperTemp?.let { temp ->
-            val thresholds = listOf(40, 50, 60)
-            val threshold = thresholds.find {
-                temp.toInt() >= it && (lastUpperLoggedTemp == null || lastUpperLoggedTemp!! < it)
-            }
+            val tempInt = temp.toInt()
+            val previousTemp = lastUpperTemp
+            lastUpperTemp = tempInt
 
-            threshold?.let {
-                lastUpperLoggedTemp = it.toFloat()
-                // 🔥 ИЗМЕНЕНО: Используем системное событие
-                LogModule.logSystemEvent(
-                    this, bluetoothHelper, enhancedLocationManager,
-                    "Температура верхнего отсека достигла ${it}°C", "ТЕМПЕРАТУРА"
-                )
+            Log.d(TAG, "🌡️ Верхний: было=${previousTemp}°C → стало=${tempInt}°C")
+
+            if (previousTemp != null) {
+                // 🔥 ПОВЫШЕНИЕ температуры - проверяем пороги
+                if (tempInt > previousTemp) {
+                    when {
+                        tempInt >= 40 && !upperTempThresholdsReached.contains(40) -> {
+                            upperTempThresholdsReached.add(40)
+                            logCriticalTemperatureEvent("🚨 ВЕРХНИЙ ОТСЕК: Достиг 40°C! (было ${previousTemp}°C)")
+                        }
+
+                        tempInt >= 50 && !upperTempThresholdsReached.contains(50) -> {
+                            upperTempThresholdsReached.add(50)
+                            logCriticalTemperatureEvent("🔥 ВЕРХНИЙ ОТСЕК: Достиг 50°C! (было ${previousTemp}°C)")
+                        }
+
+                        tempInt >= 60 && !upperTempThresholdsReached.contains(60) -> {
+                            upperTempThresholdsReached.add(60)
+                            logCriticalTemperatureEvent("🚨 ВЕРХНИЙ ОТСЕК: Достиг 60°C! (было ${previousTemp}°C)")
+                        }
+
+                        tempInt >= 70 && !upperTempThresholdsReached.contains(70) -> {
+                            upperTempThresholdsReached.add(70)
+                            logCriticalTemperatureEvent("🔥 ВЕРХНИЙ ОТСЕК: КРИТИЧНО! Достиг 70°C! (было ${previousTemp}°C)")
+                        }
+                    }
+                }
+
+                // 🔥 ПОНИЖЕНИЕ температуры - проверяем пороги
+                if (tempInt < previousTemp) {
+                    when {
+                        tempInt <= 50 && upperTempThresholdsReached.contains(60) && !upperTempThresholdsReached.contains(
+                            -50
+                        ) -> {
+                            upperTempThresholdsReached.add(-50) // Отрицательное значение = "остыл до 50"
+                            logCriticalTemperatureEvent("❄️ ВЕРХНИЙ ОТСЕК: Остыл до 50°C (было ${previousTemp}°C)")
+                        }
+
+                        tempInt <= 40 && upperTempThresholdsReached.contains(50) && !upperTempThresholdsReached.contains(
+                            -40
+                        ) -> {
+                            upperTempThresholdsReached.add(-40)
+                            logCriticalTemperatureEvent("❄️ ВЕРХНИЙ ОТСЕК: Остыл до 40°C (было ${previousTemp}°C)")
+                        }
+
+                        tempInt <= 30 && upperTempThresholdsReached.contains(40) && !upperTempThresholdsReached.contains(
+                            -30
+                        ) -> {
+                            upperTempThresholdsReached.add(-30)
+                            logCriticalTemperatureEvent("🟢 ВЕРХНИЙ ОТСЕК: Нормализовался до 30°C (было ${previousTemp}°C)")
+                        }
+
+                        tempInt <= 25 && upperTempThresholdsReached.contains(40) && !upperTempThresholdsReached.contains(
+                            -25
+                        ) -> {
+                            upperTempThresholdsReached.add(-25)
+                            logCriticalTemperatureEvent("✅ ВЕРХНИЙ ОТСЕК: Вернулся к норме 25°C (было ${previousTemp}°C)")
+                        }
+                    }
+                }
             }
         }
 
-        // Логирование температуры нижнего отсека
+        // 🔥 НИЖНИЙ ОТСЕК (ХОЛОДНЫЙ)
         lowerTemp?.let { temp ->
-            val thresholds = listOf(5, 10, 15)
-            val threshold = thresholds.find {
-                temp.toInt() <= it && (lastLowerLoggedTemp == null || lastLowerLoggedTemp!! > it)
+            val tempInt = temp.toInt()
+            val previousTemp = lastLowerTemp
+            lastLowerTemp = tempInt
+
+            Log.d(TAG, "🌡️ Нижний: было=${previousTemp}°C → стало=${tempInt}°C")
+
+            if (previousTemp != null) {
+                // 🔥 ПОНИЖЕНИЕ температуры (хорошо для холодного отсека)
+                if (tempInt < previousTemp) {
+                    when {
+                        tempInt <= 15 && !lowerTempThresholdsReached.contains(15) -> {
+                            lowerTempThresholdsReached.add(15)
+                            logCriticalTemperatureEvent("❄️ НИЖНИЙ ОТСЕК: Достиг 15°C - холодовая цепь (было ${previousTemp}°C)")
+                        }
+
+                        tempInt <= 10 && !lowerTempThresholdsReached.contains(10) -> {
+                            lowerTempThresholdsReached.add(10)
+                            logCriticalTemperatureEvent("🧊 НИЖНИЙ ОТСЕК: Достиг 10°C - глубокое охлаждение (было ${previousTemp}°C)")
+                        }
+
+                        tempInt <= 5 && !lowerTempThresholdsReached.contains(5) -> {
+                            lowerTempThresholdsReached.add(5)
+                            logCriticalTemperatureEvent("🌨️ НИЖНИЙ ОТСЕК: Достиг 5°C - заморозка (было ${previousTemp}°C)")
+                        }
+
+                        tempInt <= 0 && !lowerTempThresholdsReached.contains(0) -> {
+                            lowerTempThresholdsReached.add(0)
+                            logCriticalTemperatureEvent("🧊 НИЖНИЙ ОТСЕК: Достиг 0°C - глубокая заморозка (было ${previousTemp}°C)")
+                        }
+
+                        tempInt <= -5 && !lowerTempThresholdsReached.contains(-5) -> {
+                            lowerTempThresholdsReached.add(-5)
+                            logCriticalTemperatureEvent("❄️ НИЖНИЙ ОТСЕК: Достиг -5°C - экстремальная заморозка (было ${previousTemp}°C)")
+                        }
+                    }
+                }
+
+                // 🔥 ПОВЫШЕНИЕ температуры (НАРУШЕНИЕ холодовой цепи!)
+                if (tempInt > previousTemp) {
+                    when {
+                        tempInt >= 5 && lowerTempThresholdsReached.contains(0) && !lowerTempThresholdsReached.contains(
+                            -105
+                        ) -> {
+                            lowerTempThresholdsReached.add(-105) // Отрицательное = "нагрелся до 5"
+                            logCriticalTemperatureEvent("🚨 НАРУШЕНИЕ ХОЛОДОВОЙ ЦЕПИ: Нижний отсек нагрелся до 5°C! (было ${previousTemp}°C)")
+                        }
+
+                        tempInt >= 10 && lowerTempThresholdsReached.contains(5) && !lowerTempThresholdsReached.contains(
+                            -110
+                        ) -> {
+                            lowerTempThresholdsReached.add(-110)
+                            logCriticalTemperatureEvent("🔥 КРИТИЧЕСКОЕ НАРУШЕНИЕ: Нижний отсек нагрелся до 10°C! (было ${previousTemp}°C)")
+                        }
+
+                        tempInt >= 15 && lowerTempThresholdsReached.contains(10) && !lowerTempThresholdsReached.contains(
+                            -115
+                        ) -> {
+                            lowerTempThresholdsReached.add(-115)
+                            logCriticalTemperatureEvent("⚠️ ПОТЕРЯ ОХЛАЖДЕНИЯ: Нижний отсек нагрелся до 15°C! (было ${previousTemp}°C)")
+                        }
+
+                        tempInt >= 20 && lowerTempThresholdsReached.contains(15) && !lowerTempThresholdsReached.contains(
+                            -120
+                        ) -> {
+                            lowerTempThresholdsReached.add(-120)
+                            logCriticalTemperatureEvent("🌡️ ПОЛНАЯ ПОТЕРЯ ХОЛОДА: Нижний отсек нагрелся до 20°C! (было ${previousTemp}°C)")
+                        }
+
+                        // 🔥 ДОПОЛНИТЕЛЬНО: Любое повышение с холодных температур
+                        tempInt > 0 && previousTemp <= 0 && !lowerTempThresholdsReached.contains(-200) -> {
+                            lowerTempThresholdsReached.add(-200)
+                            logCriticalTemperatureEvent("🚨 РАЗМОРАЖИВАНИЕ: Нижний отсек вышел из заморозки! ${previousTemp}°C → ${tempInt}°C")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 🔥 ФУНКЦИЯ для сброса порогов (если нужно перезапустить логирование)
+    fun resetTemperatureThresholds() {
+        upperTempThresholdsReached.clear()
+        lowerTempThresholdsReached.clear()
+        lastUpperTemp = null
+        lastLowerTemp = null
+        Log.d(TAG, "🔄 Пороги температуры сброшены")
+    }
+
+    // 🔥 КРИТИЧЕСКИЕ температурные события (БЕЗ ограничений!)
+    private fun logCriticalTemperatureEvent(message: String) {
+        Log.d(TAG, "🌡️ КРИТИЧЕСКОЕ СОБЫТИЕ: $message")
+
+        try {
+            // 🔥 ПРЯМАЯ ЗАПИСЬ В ЛОГ-ФАЙЛ (минуя все ограничения!)
+            val logDir = File(this.getExternalFilesDir(null), "logs")
+            if (!logDir.exists()) logDir.mkdirs()
+
+            val logFile = File(logDir, "events_log.txt")
+            val timestamp =
+                java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+
+            // Получаем координаты
+            val locationInfo = enhancedLocationManager.getLocationInfo()
+            val coordinates = if (locationInfo.coordinates != "Неизвестно") {
+                "${locationInfo.coordinates} (${locationInfo.source}, ±${locationInfo.accuracy.toInt()}м)"
+            } else {
+                "Координаты недоступны"
             }
 
-            threshold?.let {
-                lastLowerLoggedTemp = it.toFloat()
-                // 🔥 ИЗМЕНЕНО: Используем системное событие
-                LogModule.logSystemEvent(
-                    this, bluetoothHelper, enhancedLocationManager,
-                    "Температура нижнего отсека упала до ${it}°C", "ТЕМПЕРАТУРА"
-                )
-            }
+            val logEntry = "$timestamp - ТЕМПЕРАТУРА: $message @ $coordinates\n"
+            logFile.appendText(logEntry)
+
+            Log.d(TAG, "✅ Температурное событие записано НАПРЯМУЮ в файл: $logEntry")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка прямой записи температурного лога: ${e.message}")
+
+            // Fallback - через LogModule без ограничений
+            LogModule.logEvent(this, "ТЕМПЕРАТУРА: $message")
         }
     }
 
