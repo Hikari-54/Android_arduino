@@ -1,11 +1,24 @@
 package com.example.bluetooth_andr11.ui.location
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Divider
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -13,12 +26,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
+import com.example.bluetooth_andr11.location.LocationMode
 
 @Composable
 fun LocationStatusWidget(
     locationManager: EnhancedLocationManager,
     modifier: Modifier = Modifier,
-    onModeChange: (EnhancedLocationManager.LocationMode) -> Unit = {}
+    onModeChange: (LocationMode) -> Unit = {}
 ) {
     val coordinates by locationManager.locationCoordinates
     val accuracy by locationManager.locationAccuracy
@@ -95,8 +109,8 @@ fun LocationStatusWidget(
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(EnhancedLocationManager.LocationMode.values().size) { index ->
-                        val mode = EnhancedLocationManager.LocationMode.values()[index]
+                    items(LocationMode.values().size) { index ->
+                        val mode = LocationMode.values()[index]
                         LocationModeChip(
                             mode = mode,
                             onClick = {
@@ -113,27 +127,27 @@ fun LocationStatusWidget(
 
 @Composable
 fun LocationModeChip(
-    mode: EnhancedLocationManager.LocationMode,
+    mode: LocationMode,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val (emoji, text, description) = when (mode) {
-        EnhancedLocationManager.LocationMode.HIGH_ACCURACY ->
+        LocationMode.HIGH_ACCURACY ->
             Triple("🎯", "Точно", "GPS + Network")
 
-        EnhancedLocationManager.LocationMode.BALANCED ->
+        LocationMode.BALANCED ->
             Triple("⚖️", "Сбалансированно", "Оптимально")
 
-        EnhancedLocationManager.LocationMode.LOW_POWER ->
+        LocationMode.LOW_POWER ->
             Triple("🔋", "Экономно", "Только Network")
 
-        EnhancedLocationManager.LocationMode.PASSIVE ->
+        LocationMode.PASSIVE ->
             Triple("😴", "Пассивно", "От других приложений")
 
-        EnhancedLocationManager.LocationMode.GPS_ONLY ->
+        LocationMode.GPS_ONLY ->
             Triple("🛰️", "GPS", "Только спутники")
 
-        EnhancedLocationManager.LocationMode.NETWORK_ONLY ->
+        LocationMode.NETWORK_ONLY ->
             Triple("📶", "Network", "Wi-Fi + Сотовые")
     }
 

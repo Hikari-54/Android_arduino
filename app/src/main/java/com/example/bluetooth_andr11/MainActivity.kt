@@ -4,8 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
@@ -15,106 +13,96 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
-import com.example.bluetooth_andr11.location.EnhancedLocationManager
-import com.example.bluetooth_andr11.log.LogModule
-import com.example.bluetooth_andr11.monitoring.TemperatureMonitor
-import com.example.bluetooth_andr11.permissions.PermissionHelper
+import com.example.bluetooth_andr11.init.AppInitializer
 import com.example.bluetooth_andr11.ui.LogScreen
 import com.example.bluetooth_andr11.ui.MainScreen
 import com.example.bluetooth_andr11.ui.control.AppTopBar
 import com.example.bluetooth_andr11.ui.debug.DebugControlPanel
 import com.example.bluetooth_andr11.ui.location.LocationRequiredScreen
 import com.example.bluetooth_andr11.ui.location.isLocationEnabled
+import com.example.bluetooth_andr11.ui.state.UIStateManager
 import com.example.bluetooth_andr11.ui.theme.Bluetooth_andr11Theme
-import com.google.android.gms.location.LocationServices
 import org.osmdroid.config.Configuration
 import java.io.File
 
+/**
+ * Главная активность приложения для мониторинга доставочной сумки.
+ *
+ * ФИНАЛЬНАЯ АРХИТЕКТУРА:
+ * - AppInitializer - полная инициализация всех компонентов
+ * - UIStateManager - централизованное управление UI состояниями
+ * - DataManager - обработка данных Arduino с валидацией
+ * - Минималистичная MainActivity - только координация и lifecycle
+ *
+ * Основные обязанности MainActivity:
+ * - Координация между компонентами приложения
+ * - Обработка lifecycle событий и cleanup ресурсов
+ * - Управление navigation и общей структурой UI
+ * - Обработка разрешений через PermissionHelper
+ * - Отображение ошибок инициализации с диагностикой
+ *
+ * Архитектурные улучшения (финальные):
+ * - Полное разделение ответственности между специализированными компонентами
+ * - Централизованное управление состояниями через UIStateManager
+ * - Типобезопасная работа с reactive состояниями
+ * - Comprehensive error handling на всех уровнях
+ * - Modular architecture с возможностью независимого тестирования
+ *
+ * Упрощённый жизненный цикл:
+ * 1. onCreate() → AppInitializer.initialize() → всё готово
+ * 2. UI updates → UIStateManager → автоматическое обновление Compose
+ * 3. Data flow → DataManager → UIStateManager → UI recomposition
+ * 4. onDestroy() → AppInitializer.cleanup() → все ресурсы освобождены
+ */
 class MainActivity : ComponentActivity() {
 
-    private lateinit var bluetoothHelper: BluetoothHelper
-    private lateinit var permissionHelper: PermissionHelper
-    private lateinit var enhancedLocationManager: EnhancedLocationManager
+    // === CORE КОМПОНЕНТЫ ===
 
-    private lateinit var temperatureMonitor: TemperatureMonitor
+    /** Централизованный инициализатор всех компонентов приложения */
+    private lateinit var appInitializer: AppInitializer
 
-    // Состояния UI
-    private val isBluetoothEnabled = mutableStateOf(false)
-    private val isDeviceConnected = mutableStateOf(false)
-    private val allPermissionsGranted = mutableStateOf(false)
-    private val batteryPercent = mutableStateOf(0)
-    private val coordinates = mutableStateOf("Неизвестно")
-    private val temp1 = mutableStateOf("--")
-    private val temp2 = mutableStateOf("--")
-    private val hallState = mutableStateOf("--")
-    private val functionState = mutableStateOf("--")
-    private val accelerometerData = mutableStateOf("--")
+    /** Централизованный менеджер всех UI состояний */
+    private lateinit var uiStateManager: UIStateManager
 
-    // Реактивное состояние GPS
-    private val isLocationServiceEnabled = mutableStateOf(false)
-    private val showDebugPanel = mutableStateOf(false)
+    // === ОБРАБОТЧИК РАЗРЕШЕНИЙ ===
 
-    private var lastLoggedBatteryLevel = 101
-    private var lastLoggedBagState: String? = null
-
+    /**
+     * Упрощённый launcher для разрешений с делегированием логики в AppInitializer.
+     */
     private val requestPermissionsLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             val allGranted = permissions.all { it.value }
-            allPermissionsGranted.value = allGranted
+            uiStateManager.updateAllPermissionsGranted(allGranted)
 
             if (allGranted) {
                 Toast.makeText(this, "Все разрешения предоставлены", Toast.LENGTH_SHORT).show()
-                if (isLocationServiceEnabled.value) {
-                    initializeAppFeatures()
+                if (uiStateManager.isLocationServiceEnabled.value) {
+                    appInitializer.initializeAppFeatures(uiStateManager.coordinates)
                 }
             } else {
                 handlePermissionsDenial(permissions)
             }
         }
 
+    // === LIFECYCLE МЕТОДЫ ===
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Начальная проверка GPS
-        isLocationServiceEnabled.value = isLocationEnabled(this)
-
-        setupCachePath()
+        // Инициализируем компоненты в правильном порядке
         initializeComponents()
-        setupMonitoring() // Настройка всех мониторингов
-        checkInitialPermissions()
-        if (BuildConfig.DEBUG) {
-            autoStartSimulationIfNeeded()
-        }
 
-        // 🔥 ИЗМЕНЕНО: Используем умное логирование для запуска
-        LogModule.logSystemEvent(
-            this, bluetoothHelper, enhancedLocationManager,
-            "Приложение запущено", "СИСТЕМА"
-        )
-
+        // Настраиваем UI с reactive состояниями
         setContent {
             Bluetooth_andr11Theme {
-                // Реактивная проверка GPS
-                if (!isLocationServiceEnabled.value) {
+                if (!uiStateManager.isLocationServiceEnabled.value) {
                     LocationRequiredScreen(
-                        onLocationEnabled = {
-                            // Принудительная проверка через EnhancedLocationManager
-                            val actualState = enhancedLocationManager.forceLocationStatusCheck()
-                            isLocationServiceEnabled.value = actualState
-
-                            if (actualState && allPermissionsGranted.value) {
-                                initializeAppFeatures()
-                            }
-
-                            Log.d(TAG, "✅ GPS проверен после включения: $actualState")
-                        }
+                        onLocationEnabled = ::handleLocationEnabled
                     )
                 } else {
                     MainAppContent()
@@ -123,78 +111,101 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Функция инициализации компонентов
+    override fun onDestroy() {
+        super.onDestroy()
+        cleanup()
+    }
+
+    // === ИНИЦИАЛИЗАЦИЯ КОМПОНЕНТОВ ===
+
+    /**
+     * Быстрая инициализация всех компонентов через специализированные менеджеры.
+     *
+     * Новый подход:
+     * 1. UIStateManager - создание всех reactive состояний
+     * 2. Проверка GPS при запуске
+     * 3. Настройка OSMDroid для карт
+     * 4. AppInitializer - полная инициализация и настройка мониторинга
+     */
     private fun initializeComponents() {
-        permissionHelper = PermissionHelper(this, requestPermissionsLauncher)
-        enhancedLocationManager = EnhancedLocationManager(
-            context = this,
-            fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        )
-        bluetoothHelper = BluetoothHelper(this)
+        try {
+            Log.d(TAG, "🚀 Быстрый старт приложения...")
 
-        // 🔥 Инициализация монитора температуры
-        temperatureMonitor = TemperatureMonitor(this, bluetoothHelper, enhancedLocationManager)
-    }
+            // 1. Создаём UIStateManager для всех reactive состояний
+            uiStateManager = UIStateManager()
 
-    // Функция настройки всех мониторингов
-    private fun setupMonitoring() {
-        setupBluetoothMonitoring()
-        setupGpsMonitoring()
-    }
+            // 2. Проверяем GPS и обновляем состояние
+            val gpsEnabled = isLocationEnabled(this)
+            uiStateManager.updateLocationServiceEnabled(gpsEnabled)
 
-    // 🔥 ОБНОВЛЕННАЯ функция для настройки GPS мониторинга
-    private fun setupGpsMonitoring() {
-        Log.d(TAG, "🔄 Настройка GPS мониторинга...")
+            // 3. Настраиваем OSMDroid кэш для карт
+            setupCachePath()
 
-        enhancedLocationManager.setLocationStatusChangeListener { isEnabled ->
-            Log.d(TAG, "📍 GPS состояние изменилось: $isEnabled")
+            // 4. Инициализируем все компоненты через AppInitializer
+            appInitializer = AppInitializer(this, requestPermissionsLauncher)
+            val success = appInitializer.initialize()
 
-            runOnUiThread {
-                isLocationServiceEnabled.value = isEnabled
+            if (success) {
+                // Настраиваем мониторинг с reactive обновлениями
+                setupMonitoring()
 
-                if (!isEnabled) {
-                    Toast.makeText(
-                        this,
-                        "⚠️ Внимание: GPS отключен! Функции местоположения недоступны.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                // Проверяем разрешения и активируем функции
+                checkPermissionsAndActivateFeatures()
 
-                    // 🔥 ИЗМЕНЕНО: Используем умное логирование GPS
-                    LogModule.logGpsStateChange(
-                        this,
-                        false,
-                        "Пользователь отключил GPS во время работы приложения"
-                    )
-                } else {
-                    Toast.makeText(
-                        this,
-                        "✅ GPS включен! Функции местоположения восстановлены.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    // 🔥 ИЗМЕНЕНО: Используем умное логирование GPS
-                    LogModule.logGpsStateChange(
-                        this,
-                        true,
-                        "GPS включен пользователем"
-                    )
-
-                    if (allPermissionsGranted.value) {
-                        initializeAppFeatures()
-                    }
+                // Автозапуск симуляции в DEBUG режиме
+                if (BuildConfig.DEBUG) {
+                    appInitializer.autoStartSimulationIfNeeded()
                 }
+
+                Log.d(TAG, "✅ Приложение полностью готово к работе")
+            } else {
+                showInitializationError()
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Критическая ошибка инициализации: ${e.message}")
+            showInitializationError()
+        }
+    }
+
+    /**
+     * Настраивает мониторинг с автоматическим обновлением UI состояний.
+     */
+    private fun setupMonitoring() {
+        // Мониторинг Bluetooth с reactive обновлениями
+        appInitializer.setupBluetoothMonitoring(
+            bluetoothEnabledState = uiStateManager.isBluetoothEnabled,
+            deviceConnectedState = uiStateManager.isDeviceConnected,
+            onDataReceived = ::handleReceivedData
+        )
+
+        // Мониторинг GPS с reactive обновлениями
+        appInitializer.setupGpsMonitoring(
+            locationEnabledState = uiStateManager.isLocationServiceEnabled,
+            onLocationEnabledChanged = ::handleGpsStateChange
+        )
+
+        Log.d(TAG, "📡 Reactive мониторинг настроен")
+    }
+
+    /**
+     * Проверяет разрешения и активирует функции через AppInitializer.
+     */
+    private fun checkPermissionsAndActivateFeatures() {
+        appInitializer.checkInitialPermissions { hasAllPermissions ->
+            uiStateManager.updateAllPermissionsGranted(hasAllPermissions)
+
+            if (hasAllPermissions && uiStateManager.isLocationServiceEnabled.value) {
+                appInitializer.initializeAppFeatures(uiStateManager.coordinates)
             }
         }
-
-        val initialState = enhancedLocationManager.forceLocationStatusCheck()
-        isLocationServiceEnabled.value = initialState
-
-        // 🔥 НОВОЕ: Логируем начальное состояние через умное логирование
-        LogModule.logGpsStateChange(this, initialState, "Проверка при запуске приложения")
-
-        Log.d(TAG, "🚀 Начальное состояние GPS: $initialState")
     }
 
+    // === UI КОМПОНЕНТЫ ===
+
+    /**
+     * Основной контент с чистой навигацией и reactive состояниями.
+     */
     @Composable
     private fun MainAppContent() {
         val navController = rememberNavController()
@@ -202,15 +213,15 @@ class MainActivity : ComponentActivity() {
         Scaffold(
             topBar = {
                 AppTopBar(
-                    batteryLevel = batteryPercent.value,
-                    isBluetoothEnabled = isBluetoothEnabled.value,
-                    isDeviceConnected = isDeviceConnected.value,
-                    allPermissionsGranted = allPermissionsGranted.value,
+                    batteryLevel = uiStateManager.batteryPercent.value,
+                    isBluetoothEnabled = uiStateManager.isBluetoothEnabled.value,
+                    isDeviceConnected = uiStateManager.isDeviceConnected.value,
+                    allPermissionsGranted = uiStateManager.allPermissionsGranted.value,
                     onPermissionsClick = ::handlePermissionsIconClick,
                     onBluetoothClick = ::handleConnectToDevice,
                     onDebugClick = {
-                        showDebugPanel.value = !showDebugPanel.value
-                        Log.d(TAG, "Debug panel toggled: ${showDebugPanel.value}")
+                        uiStateManager.toggleDebugPanel()
+                        Log.d(TAG, "Debug panel toggled: ${uiStateManager.showDebugPanel.value}")
                     },
                     showDebugButton = BuildConfig.DEBUG,
                     onTitleClick = {
@@ -218,10 +229,11 @@ class MainActivity : ComponentActivity() {
                             popUpTo(navController.graph.startDestinationId) { inclusive = false }
                             launchSingleTop = true
                         }
-                        showDebugPanel.value = false
+                        if (uiStateManager.showDebugPanel.value) {
+                            uiStateManager.toggleDebugPanel()
+                        }
                     },
-                    // 🔥 ДОБАВЛЕННЫЙ параметр для скрытия Bluetooth в режиме симуляции
-                    bluetoothHelper = bluetoothHelper
+                    bluetoothHelper = appInitializer.bluetoothHelper
                 )
             }
         ) { innerPadding ->
@@ -233,13 +245,13 @@ class MainActivity : ComponentActivity() {
                     MainScreen(
                         modifier = Modifier.padding(innerPadding),
                         onCommandSend = ::sendCommandToDevice,
-                        temp1 = temp1.value,
-                        temp2 = temp2.value,
-                        hallState = hallState.value,
-                        acc = accelerometerData.value,
+                        temp1 = uiStateManager.temp1.value,
+                        temp2 = uiStateManager.temp2.value,
+                        hallState = uiStateManager.hallState.value,
+                        acc = uiStateManager.accelerometerData.value,
                         onNavigateToLogs = { navController.navigate("log_screen") },
-                        bluetoothHelper = bluetoothHelper,
-                        locationManager = enhancedLocationManager,
+                        bluetoothHelper = appInitializer.bluetoothHelper,
+                        locationManager = appInitializer.enhancedLocationManager,
                     )
                 }
 
@@ -248,287 +260,99 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            if (showDebugPanel.value && BuildConfig.DEBUG) {
+            // Панель отладки с reactive состоянием
+            if (uiStateManager.showDebugPanel.value && BuildConfig.DEBUG) {
                 DebugControlPanel(
-                    bluetoothHelper = bluetoothHelper,
-                    locationManager = enhancedLocationManager
+                    bluetoothHelper = appInitializer.bluetoothHelper,
+                    locationManager = appInitializer.enhancedLocationManager
                 )
             }
         }
     }
 
-    private fun setupBluetoothMonitoring() {
-        bluetoothHelper.monitorBluetoothStatus(
-            this,
-            enhancedLocationManager
-        ) { isEnabled, isConnected ->
-            isBluetoothEnabled.value = isEnabled
-            isDeviceConnected.value = isConnected
+    // === ОБРАБОТКА ДАННЫХ ARDUINO ===
 
-            if (isConnected) {
-                bluetoothHelper.listenForData { data ->
-                    handleReceivedData(data)
-                }
-            } else if (isEnabled && !isConnected) {
-                bluetoothHelper.showDeviceSelectionDialog(this) { device ->
-                    bluetoothHelper.connectToDevice(device) { success, message ->
-                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-                        isDeviceConnected.value = success
+    /**
+     * Максимально упрощённая обработка данных через DataManager и UIStateManager.
+     *
+     * Вся сложная логика инкапсулирована в соответствующих компонентах!
+     */
+    fun handleReceivedData(data: String) {
+        Log.d(TAG, "🔴 Получены данные: '$data'")
+
+        // Создаём контейнер состояний и передаём в DataManager
+        val uiStates = uiStateManager.createDataManagerUIStates()
+        appInitializer.dataManager.processArduinoData(data, uiStates)
+    }
+
+    // === ОБРАБОТКА КОМАНД И СОБЫТИЙ ===
+
+    /**
+     * Отправляет команду на Arduino через BluetoothHelper.
+     */
+    private fun sendCommandToDevice(command: String) {
+        Log.d(TAG, "📤 Отправляем команду: $command")
+        appInitializer.bluetoothHelper.sendCommand(command)
+    }
+
+    /**
+     * Обрабатывает клик по иконке разрешений.
+     */
+    private fun handlePermissionsIconClick() {
+        if (!uiStateManager.allPermissionsGranted.value) {
+            appInitializer.permissionHelper.requestPermissions()
+        } else {
+            Toast.makeText(this, "Все разрешения предоставлены", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Обрабатывает клик по Bluetooth иконке.
+     */
+    private fun handleConnectToDevice() {
+        appInitializer.bluetoothHelper.showDeviceSelectionDialog(this) { device ->
+            appInitializer.bluetoothHelper.connectToDevice(device) { success, message ->
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                uiStateManager.updateDeviceConnected(success)
+                if (success) {
+                    appInitializer.bluetoothHelper.listenForData { data ->
+                        handleReceivedData(data)
                     }
                 }
             }
         }
     }
 
-    private fun checkInitialPermissions() {
-        allPermissionsGranted.value = permissionHelper.hasAllPermissions()
-        if (allPermissionsGranted.value && isLocationServiceEnabled.value) {
-            initializeAppFeatures()
-        } else if (!allPermissionsGranted.value) {
-            permissionHelper.requestPermissions()
+    // === ОБРАБОТКА ИЗМЕНЕНИЙ СОСТОЯНИЯ ===
+
+    /**
+     * Обрабатывает изменения GPS состояния.
+     */
+    private fun handleGpsStateChange(isEnabled: Boolean) {
+        if (isEnabled && uiStateManager.allPermissionsGranted.value) {
+            appInitializer.initializeAppFeatures(uiStateManager.coordinates)
         }
     }
 
-    private fun initializeAppFeatures() {
-        enhancedLocationManager.startLocationUpdates { newCoordinates ->
-            coordinates.value = newCoordinates
-            Log.d(TAG, "📍 Координаты обновлены: $newCoordinates")
+    /**
+     * Обрабатывает включение GPS пользователем.
+     */
+    private fun handleLocationEnabled() {
+        val actualState = appInitializer.enhancedLocationManager.forceLocationStatusCheck()
+        uiStateManager.updateLocationServiceEnabled(actualState)
+
+        if (actualState && uiStateManager.allPermissionsGranted.value) {
+            appInitializer.initializeAppFeatures(uiStateManager.coordinates)
         }
 
-        if (isLocationServiceEnabled.value) {
-            enhancedLocationManager.forceLocationUpdate(EnhancedLocationManager.LocationMode.BALANCED)
-        }
-
-        // Получаем рекомендуемый режим GPS
-        val recommendedMode = enhancedLocationManager.getRecommendedMode()
-        enhancedLocationManager.setLocationMode(recommendedMode)
-        Log.d(TAG, "🎯 Установлен рекомендуемый режим GPS: $recommendedMode")
+        Log.d(TAG, "✅ GPS проверен: $actualState")
     }
 
-    private fun autoStartSimulationIfNeeded() {
-        // 🔥 ИСПРАВЛЕНИЕ: Двойная проверка DEBUG режима
-        if (!BuildConfig.DEBUG) {
-            Log.i(TAG, "RELEASE режим: автозапуск симуляции отключен")
-            return
-        }
+    // === ОБРАБОТКА РАЗРЕШЕНИЙ ===
 
-        if (!bluetoothHelper.isDeviceConnected) {
-            Handler(Looper.getMainLooper()).postDelayed({
-                // 🔥 ДОПОЛНИТЕЛЬНАЯ проверка перед запуском
-                if (BuildConfig.DEBUG && !bluetoothHelper.isDeviceConnected) {
-                    bluetoothHelper.enableSimulationMode(true)
-                    Toast.makeText(this, "🔧 Запущена симуляция Arduino (DEBUG)", Toast.LENGTH_LONG)
-                        .show()
-
-                    LogModule.logSystemEvent(
-                        this, bluetoothHelper, enhancedLocationManager,
-                        "Автозапуск симуляции Arduino (DEBUG режим)", "ОТЛАДКА"
-                    )
-                }
-            }, 3000)
-        }
-    }
-
-    fun handleReceivedData(data: String) {
-        Log.d(TAG, "🔴 Получены RAW данные: '$data'")
-        parseArduinoData(data)
-    }
-
-    private fun parseArduinoData(data: String) {
-        try {
-            val cleanData = data.trim()
-            val parts = cleanData.split(",")
-
-            if (parts.size >= 6) {
-                Log.d(TAG, "✅ Парсинг ${parts.size} параметров")
-
-                val batteryValue = parts[0].trim().toIntOrNull() ?: -1
-                val upperTempString = parts[1].trim()
-                val lowerTempString = parts[2].trim()
-                val closedState = parts[3].trim()
-                val arduinoState = parts[4].trim().toIntOrNull() ?: 0
-                val accelerometerValue = parts[5].trim().toFloatOrNull() ?: 0.0f
-
-                // Обновляем UI
-                updateBatteryLevel(batteryValue)
-                updateTemperatures(upperTempString, lowerTempString)
-                updateBagState(closedState)
-                updateAccelerometer(accelerometerValue)
-
-                // Логируем дополнительные параметры для отладки
-                if (parts.size > 6) {
-                    val extraParams = parts.subList(6, parts.size).joinToString(",")
-                    Log.w(TAG, "⚠️ Лишние параметры проигнорированы: $extraParams")
-                }
-
-            } else {
-                Log.w(TAG, "❌ Недостаточно параметров: получено ${parts.size}, ожидается 6")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка парсинга данных: ${e.message}")
-        }
-    }
-
-    private fun updateBatteryLevel(batteryValue: Int) {
-        if (batteryValue in 0..100) {
-            batteryPercent.value = batteryValue
-            logBatteryThresholds(batteryValue)
-        } else {
-            Log.w(TAG, "⚠️ Некорректное значение батареи: $batteryValue")
-        }
-    }
-
-    private fun updateTemperatures(upperTempString: String, lowerTempString: String) {
-        val upperTemp = if (upperTempString == "er") {
-            Log.w(TAG, "⚠️ Ошибка датчика горячего отсека")
-            null
-        } else {
-            upperTempString.toFloatOrNull()
-        }
-
-        val lowerTemp = if (lowerTempString == "er") {
-            Log.w(TAG, "⚠️ Ошибка датчика холодного отсека")
-            null
-        } else {
-            lowerTempString.toFloatOrNull()
-        }
-
-        // Обновляем UI
-        temp1.value = when {
-            upperTempString == "er" -> "Ошибка"
-            upperTemp != null -> upperTemp.toString()
-            else -> temp1.value
-        }
-
-        temp2.value = when {
-            lowerTempString == "er" -> "Ошибка"
-            lowerTemp != null -> lowerTemp.toString()
-            else -> temp2.value
-        }
-
-        // 🔥 ЕДИНСТВЕННАЯ СТРОКА для всего температурного мониторинга!
-        temperatureMonitor.processTemperatures(upperTemp, lowerTemp)
-    }
-
-    private fun updateBagState(closedState: String) {
-        val newState = when (closedState) {
-            "1" -> {
-                Log.d(TAG, "🔒 Сумка закрыта")
-                "Закрыт"
-            }
-
-            "0" -> {
-                Log.d(TAG, "🔓 Сумка открыта")
-                "Открыт"
-            }
-
-            else -> {
-                Log.w(TAG, "❓ Неизвестное состояние сумки: $closedState")
-                "Неизвестно"
-            }
-        }
-
-        hallState.value = newState
-        logBagStateChange(newState)
-    }
-
-    private var lastAccelerometerLogTime = 0L
-
-    // 🔥 ОБНОВЛЕННАЯ функция логирования акселерометра
-    private fun updateAccelerometer(accelerometerValue: Float) {
-        val shakeCategory = when {
-            accelerometerValue > 2.5 -> {
-                // 🔥 ДОБАВЛЕНО: Ограничение по времени для акселерометра
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastAccelerometerLogTime > 2000) { // 2 секунд
-                    LogModule.logSystemEvent(
-                        this, bluetoothHelper, enhancedLocationManager,
-                        "Экстремальная тряска (${String.format("%.2f", accelerometerValue)})",
-                        "АКСЕЛЕРОМЕТР"
-                    )
-                    lastAccelerometerLogTime = currentTime
-                }
-                "Экстремальная тряска"
-            }
-
-            accelerometerValue > 1.0 -> {
-                // 🔥 ДОБАВЛЕНО: Ограничение по времени для акселерометра
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastAccelerometerLogTime > 2000) { // 2 секунд
-                    LogModule.logSystemEvent(
-                        this, bluetoothHelper, enhancedLocationManager,
-                        "Сильная тряска (${String.format("%.2f", accelerometerValue)})",
-                        "АКСЕЛЕРОМЕТР"
-                    )
-                    lastAccelerometerLogTime = currentTime
-                }
-                "Сильная тряска"
-            }
-
-            accelerometerValue > 0.5 -> "Слабая тряска"
-            else -> "В покое"
-        }
-
-        accelerometerData.value = "$shakeCategory (${String.format("%.2f", accelerometerValue)})"
-    }
-
-    // 🔥 ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ функция логирования батареи
-    private fun logBatteryThresholds(batteryValue: Int) {
-        Log.d(
-            TAG,
-            "🔋 Проверка батареи: текущий=$batteryValue%, последний зафиксированный=$lastLoggedBatteryLevel%"
-        )
-
-        // Проверяем понижение уровня батареи
-        val downwardThresholds = listOf(50, 30, 15, 5)
-        for (threshold in downwardThresholds) {
-            if (batteryValue <= threshold && lastLoggedBatteryLevel > threshold) {
-                lastLoggedBatteryLevel = threshold
-                val message = when (threshold) {
-                    5 -> "🚨 КРИТИЧЕСКИ низкий уровень заряда (≤5%)"
-                    15 -> "⚠️ Очень низкий уровень заряда (≤15%)"
-                    30 -> "⚡ Низкий уровень заряда (≤30%)"
-                    50 -> "🔋 Уровень заряда менее половины (≤50%)"
-                    else -> continue
-                }
-
-                Log.d(TAG, "🔋 Логируем пороговое событие батареи: $message")
-                LogModule.logSystemEvent(
-                    this, bluetoothHelper, enhancedLocationManager,
-                    message, "БАТАРЕЯ"
-                )
-                break // Логируем только один порог за раз
-            }
-        }
-    }
-
-    // 🔥 ОБНОВЛЕННАЯ функция логирования состояния сумки
-    private fun logBagStateChange(newState: String) {
-        if (lastLoggedBagState != newState) {
-            lastLoggedBagState = newState
-            val message = "Сумка ${if (newState == "Закрыт") "закрыта" else "открыта"}"
-
-            // 🔥 ИЗМЕНЕНО: Используем системное событие с ограничением
-            LogModule.logSystemEvent(
-                this, bluetoothHelper, enhancedLocationManager,
-                message, "ДАТЧИК_ХОЛЛА"
-            )
-        }
-    }
-
-    private fun sendCommandToDevice(command: String) {
-        Log.d(TAG, "📤 Отправляем команду: $command")
-        bluetoothHelper.sendCommand(command)
-    }
-
-    private fun handlePermissionsIconClick() {
-        if (!allPermissionsGranted.value) {
-            permissionHelper.requestPermissions()
-        } else {
-            Toast.makeText(this, "Все разрешения предоставлены", Toast.LENGTH_SHORT).show()
-        }
-    }
-
+    /**
+     * Упрощённая обработка отказа в разрешениях.
+     */
     private fun handlePermissionsDenial(permissions: Map<String, Boolean>) {
         val permanentlyDenied = permissions.filter { permission ->
             !permission.value && !ActivityCompat.shouldShowRequestPermissionRationale(
@@ -545,10 +369,13 @@ class MainActivity : ComponentActivity() {
             ).show()
             redirectToAppSettings()
         } else {
-            permissionHelper.requestPermissions()
+            appInitializer.permissionHelper.requestPermissions()
         }
     }
 
+    /**
+     * Перенаправляет в настройки приложения.
+     */
     private fun redirectToAppSettings() {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", packageName, null)
@@ -556,20 +383,31 @@ class MainActivity : ComponentActivity() {
         startActivity(intent)
     }
 
-    private fun handleConnectToDevice() {
-        bluetoothHelper.showDeviceSelectionDialog(this) { device ->
-            bluetoothHelper.connectToDevice(device) { success, message ->
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-                isDeviceConnected.value = success
-                if (success) {
-                    bluetoothHelper.listenForData { data ->
-                        handleReceivedData(data)
-                    }
-                }
-            }
+    // === ОБРАБОТКА ОШИБОК ===
+
+    /**
+     * Показывает ошибку инициализации с диагностикой.
+     */
+    private fun showInitializationError() {
+        Toast.makeText(
+            this,
+            "Ошибка инициализации. Некоторые функции могут быть недоступны.",
+            Toast.LENGTH_LONG
+        ).show()
+
+        // В DEBUG режиме показываем детальную диагностику
+        if (BuildConfig.DEBUG && ::appInitializer.isInitialized) {
+            Log.e(TAG, "=== ДИАГНОСТИКА ОШИБКИ ИНИЦИАЛИЗАЦИИ ===")
+            Log.e(TAG, appInitializer.getInitializationStatus().getDetailedReport())
+            Log.e(TAG, "=========================================")
         }
     }
 
+    // === НАСТРОЙКА OSMDROID ===
+
+    /**
+     * Настраивает кэш OpenStreetMap для корректной работы карт.
+     */
     private fun setupCachePath() {
         val context = applicationContext
         val cacheDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -582,24 +420,136 @@ class MainActivity : ComponentActivity() {
         config.osmdroidBasePath = cacheDir
         config.osmdroidTileCache = File(cacheDir, "cache")
         config.userAgentValue = packageName
+
+        Log.d(TAG, "🗺️ OSMDroid кэш настроен: ${cacheDir.absolutePath}")
     }
 
-    // Функция для очистки ресурсов
-    override fun onDestroy() {
-        super.onDestroy()
+    // === ОЧИСТКА РЕСУРСОВ ===
 
+    /**
+     * Максимально упрощённая очистка через специализированные компоненты.
+     * Каждый компонент отвечает за освобождение своих ресурсов.
+     */
+    private fun cleanup() {
         try {
-            // 🔥 НОВОЕ: Логируем закрытие приложения
-            LogModule.logSystemEvent(
-                this, bluetoothHelper, enhancedLocationManager,
-                "Приложение закрыто", "СИСТЕМА"
-            )
+            Log.d(TAG, "🧹 Начинаем очистку MainActivity...")
 
-            enhancedLocationManager.cleanup()
-            Log.d(TAG, "🧹 MainActivity уничтожена, GPS мониторинг остановлен")
+            // Очищаем AppInitializer (включает все подкомпоненты)
+            if (::appInitializer.isInitialized) {
+                appInitializer.cleanup()
+            }
+
+            // Сбрасываем UI состояния
+            if (::uiStateManager.isInitialized) {
+                uiStateManager.resetAllStates()
+            }
+
+            Log.d(TAG, "✅ MainActivity успешно очищена")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Ошибка очистки ресурсов: ${e.message}")
         }
+    }
+
+    // === ДИАГНОСТИКА И МОНИТОРИНГ ===
+
+    /**
+     * Возвращает краткий статус системы для отладки и мониторинга.
+     */
+    fun getSystemStatus(): String {
+        if (!::appInitializer.isInitialized || !::uiStateManager.isInitialized) {
+            return "Компоненты не инициализированы"
+        }
+
+        return buildString {
+            appendLine("=== SYSTEM STATUS ===")
+            appendLine("UIStateManager: ${uiStateManager.getStatusReport()}")
+            appendLine("AppInitializer: ${appInitializer.getStatusReport()}")
+            appendLine("Система готова: ${uiStateManager.isSystemReady()}")
+            appendLine("Данные активны: ${uiStateManager.hasActiveData()}")
+            appendLine("===================")
+        }
+    }
+
+    /**
+     * Возвращает детальную диагностику всех компонентов для troubleshooting.
+     */
+    fun getDetailedDiagnostics(): String {
+        if (!::appInitializer.isInitialized || !::uiStateManager.isInitialized) {
+            return "Диагностика недоступна: компоненты не инициализированы"
+        }
+
+        return buildString {
+            appendLine(getSystemStatus())
+            appendLine()
+            appendLine("=== DETAILED DIAGNOSTICS ===")
+            appendLine()
+            appendLine("UI STATES:")
+            appendLine(uiStateManager.getDetailedStateInfo())
+            appendLine()
+            appendLine("INITIALIZATION:")
+            appendLine(appInitializer.getInitializationStatus().getDetailedReport())
+            appendLine()
+            appendLine("DATA MANAGER:")
+            appendLine(appInitializer.dataManager.getStatusReport())
+            appendLine()
+            appendLine("LOCATION MANAGER:")
+            appendLine(appInitializer.enhancedLocationManager.getStatusSummary())
+            appendLine()
+            appendLine("BLUETOOTH HELPER:")
+            appendLine(appInitializer.bluetoothHelper.getConnectionStatistics())
+            appendLine()
+            appendLine("TEMPERATURE MONITOR:")
+            appendLine(appInitializer.temperatureMonitor.getStatusReport())
+            appendLine("=============================")
+        }
+    }
+
+    /**
+     * Проверяет общую готовность системы к полноценной работе.
+     */
+    fun isSystemReady(): Boolean {
+        return ::appInitializer.isInitialized &&
+                ::uiStateManager.isInitialized &&
+                appInitializer.isSystemReady() &&
+                uiStateManager.isSystemReady()
+    }
+
+    /**
+     * Возвращает краткие рекомендации по решению проблем системы.
+     */
+    fun getSystemRecommendations(): List<String> {
+        val recommendations = mutableListOf<String>()
+
+        if (!::appInitializer.isInitialized) {
+            recommendations.add("Перезапустите приложение")
+            return recommendations
+        }
+
+        if (!uiStateManager.allPermissionsGranted.value) {
+            recommendations.add("Предоставьте все необходимые разрешения")
+        }
+
+        if (!uiStateManager.isLocationServiceEnabled.value) {
+            recommendations.add("Включите GPS в настройках устройства")
+        }
+
+        if (!uiStateManager.isBluetoothEnabled.value) {
+            recommendations.add("Включите Bluetooth")
+        }
+
+        if (!uiStateManager.isDeviceConnected.value) {
+            recommendations.add("Подключите Arduino устройство")
+        }
+
+        if (!uiStateManager.hasActiveData()) {
+            recommendations.add("Проверьте передачу данных от Arduino")
+        }
+
+        if (recommendations.isEmpty()) {
+            recommendations.add("Система работает нормально")
+        }
+
+        return recommendations
     }
 
     companion object {

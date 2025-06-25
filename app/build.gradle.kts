@@ -47,7 +47,6 @@ android {
     }
 
     composeOptions {
-        // ✅ ВОЗВРАЩЕНО: Для Kotlin 1.9.24 нужно указывать версию вручную
         kotlinCompilerExtensionVersion = "1.5.14"
     }
 }
@@ -86,7 +85,9 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
 
-    // Debugging tools
+    implementation(libs.androidx.ui)
+    implementation(libs.androidx.ui.graphics)
+    implementation(libs.androidx.ui.tooling.preview)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

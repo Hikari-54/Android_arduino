@@ -32,10 +32,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.bluetooth_andr11.ArduinoSimulator
+import com.example.bluetooth_andr11.simulation.ArduinoSimulator
 import com.example.bluetooth_andr11.BuildConfig
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
+import com.example.bluetooth_andr11.location.LocationMode
 import com.example.bluetooth_andr11.ui.location.LocationDiagnostics
 import com.example.bluetooth_andr11.ui.location.LocationStatusWidget
 import kotlinx.coroutines.delay
@@ -167,7 +168,7 @@ private fun LocationControlSection(
     // 🎯 Виджет статуса местоположения
     LocationStatusWidget(
         locationManager = locationManager,
-        onModeChange = { mode ->
+        onModeChange = { mode: LocationMode ->
             locationManager.setLocationMode(mode)
             Toast.makeText(context, "Режим GPS: ${mode.name}", Toast.LENGTH_SHORT).show()
         }
@@ -186,7 +187,7 @@ private fun LocationControlSection(
             color = Color(0xFF4CAF50),
             modifier = Modifier.weight(1f),
             onClick = {
-                locationManager.forceLocationUpdate(EnhancedLocationManager.LocationMode.HIGH_ACCURACY)
+                locationManager.forceLocationUpdate(LocationMode.HIGH_ACCURACY)
                 Toast.makeText(context, "Принудительный GPS запрос", Toast.LENGTH_SHORT).show()
             }
         )
@@ -197,7 +198,7 @@ private fun LocationControlSection(
             color = Color(0xFF2196F3),
             modifier = Modifier.weight(1f),
             onClick = {
-                locationManager.forceLocationUpdate(EnhancedLocationManager.LocationMode.NETWORK_ONLY)
+                locationManager.forceLocationUpdate(LocationMode.NETWORK_ONLY)
                 Toast.makeText(context, "Принудительный Network запрос", Toast.LENGTH_SHORT).show()
             }
         )
@@ -208,8 +209,8 @@ private fun LocationControlSection(
             color = Color(0xFFFF9800),
             modifier = Modifier.weight(1f),
             onClick = {
-                locationManager.setLocationMode(EnhancedLocationManager.LocationMode.LOW_POWER)
-                locationManager.forceLocationUpdate(EnhancedLocationManager.LocationMode.LOW_POWER)
+                locationManager.setLocationMode(LocationMode.LOW_POWER)
+                locationManager.forceLocationUpdate(LocationMode.LOW_POWER)
                 Toast.makeText(context, "Wi-Fi позиционирование", Toast.LENGTH_SHORT).show()
             }
         )
@@ -236,7 +237,7 @@ private fun LocationControlSection(
             color = Color(0xFF9C27B0),
             modifier = Modifier.weight(1f),
             onClick = {
-                locationManager.setLocationMode(EnhancedLocationManager.LocationMode.BALANCED)
+                locationManager.setLocationMode(LocationMode.BALANCED)
                 Toast.makeText(context, "Сброс к BALANCED режиму", Toast.LENGTH_SHORT).show()
             }
         )

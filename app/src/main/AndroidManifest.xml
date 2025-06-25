@@ -12,11 +12,14 @@
     <!-- Разрешения для работы с Bluetooth -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <!-- Новые разрешения для Android 12+ -->
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
+        android:minSdkVersion="31"
         android:required="false" />
     <uses-permission
         android:name="android.permission.BLUETOOTH_CONNECT"
+        android:minSdkVersion="31"
         android:required="false" />
 
 

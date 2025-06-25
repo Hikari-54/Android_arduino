@@ -16,7 +16,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
-import com.example.bluetooth_andr11.ArduinoSimulator
+import com.example.bluetooth_andr11.simulation.ArduinoSimulator
 import com.example.bluetooth_andr11.BuildConfig
 import com.example.bluetooth_andr11.MainActivity
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
@@ -30,40 +30,240 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
 
+/**
+ * Управляет Bluetooth подключениями к Arduino устройству и симуляцией.
+ *
+ * Основные функции:
+ * - Сканирование и подключение к Bluetooth устройствам
+ * - Отправка команд на Arduino (H/h - нагрев, C/c - охлаждение, L/l - свет)
+ * - Прослушивание данных от Arduino в формате CSV
+ * - Симуляция Arduino для тестирования (только DEBUG режим)
+ * - Мониторинг состояния Bluetooth адаптера
+ * - Автоматическое переподключение при разрыве связи
+ *
+ * Поддерживаемые команды Arduino:
+ * - "H" - включить нагрев, "h" - выключить нагрев
+ * - "C" - включить охлаждение, "c" - выключить охлаждение
+ * - "L" - включить подсветку, "l" - выключить подсветку
+ *
+ * Формат данных от Arduino: "battery,tempHot,tempCold,closed,state,overload"
+ */
 class BluetoothHelper(private val context: Context) {
+
+    // === ОЧИСТКА РЕСУРСОВ ===
+
+    /**
+     * Очищает все ресурсы BluetoothHelper при закрытии приложения
+     */
+    fun cleanup() {
+        try {
+            // Останавливаем симуляцию если она запущена
+            stopArduinoSimulation()
+
+            // Отключаем устройство и очищаем потоки
+            disconnectDevice()
+
+            // Отменяем все активные операции
+            isListening = false
+
+            Log.d(TAG, "🧹 BluetoothHelper полностью очищен")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка очистки BluetoothHelper: ${e.message}")
+        }
+    }
+
+    // === ДОПОЛНИТЕЛЬНЫЕ УТИЛИТЫ ===
+
+    /**
+     * Возвращает статистику подключений для отладки
+     */
+    fun getConnectionStatistics(): ConnectionStatistics {
+        return ConnectionStatistics(
+            isBluetoothEnabled = isBluetoothEnabled(),
+            isDeviceConnected = isDeviceConnected,
+            isSimulationMode = simulationMode,
+            currentScenario = currentScenario,
+            isListening = isListening,
+            hasInputStream = inputStream != null,
+            hasOutputStream = outputStream != null
+        )
+    }
+
+    /**
+     * Проверяет готовность системы к работе
+     */
+    fun isSystemReady(): Boolean {
+        return when {
+            simulationMode -> true // Симуляция всегда готова
+            !isBluetoothEnabled() -> false
+            !hasBluetoothPermission() -> false
+            !isDeviceConnected -> false
+            else -> inputStream != null && outputStream != null
+        }
+    }
+
+    /**
+     * Возвращает человекочитаемый статус подключения
+     */
+    fun getConnectionStatusDescription(): String {
+        return when {
+            simulationMode -> "🤖 Режим симуляции активен"
+            !isBluetoothEnabled() -> "🔴 Bluetooth выключен"
+            !hasBluetoothPermission() -> "🔴 Нет разрешений Bluetooth"
+            !isDeviceConnected -> "🟡 Устройство не подключено"
+            !isListening -> "🟡 Подключено, ожидание данных"
+            else -> "🟢 Подключено и активно"
+        }
+    }
+
+    // === DATA CLASSES ===
+
+    /**
+     * Информация о сценарии симуляции для отображения в UI
+     *
+     * @param name отображаемое имя сценария
+     * @param icon иконка для UI
+     * @param description описание сценария
+     * @param durationSeconds примерная продолжительность в секундах
+     */
+    data class ScenarioInfo(
+        val name: String,
+        val icon: String,
+        val description: String,
+        val durationSeconds: Int
+    )
+
+    /**
+     * Статистика подключений для отладки и мониторинга
+     */
+    data class ConnectionStatistics(
+        val isBluetoothEnabled: Boolean,
+        val isDeviceConnected: Boolean,
+        val isSimulationMode: Boolean,
+        val currentScenario: ArduinoSimulator.SimulationScenario,
+        val isListening: Boolean,
+        val hasInputStream: Boolean,
+        val hasOutputStream: Boolean
+    ) {
+        /**
+         * Возвращает краткую сводку состояния
+         */
+        fun getSummary(): String {
+            val mode = if (isSimulationMode) "Симуляция" else "Реальное устройство"
+            val status = if (isDeviceConnected) "подключено" else "отключено"
+            val listening = if (isListening) "слушает" else "не слушает"
+            return "$mode: $status, $listening"
+        }
+
+        /**
+         * Проверяет, есть ли проблемы с подключением
+         */
+        fun hasIssues(): Boolean {
+            return !isSimulationMode && (!isBluetoothEnabled || !isDeviceConnected || !hasInputStream || !hasOutputStream)
+        }
+    }
+
+    companion object {
+        private const val TAG = "BluetoothHelper"
+
+        /** Поддерживаемые команды Arduino */
+        const val COMMAND_HEAT_ON = "H"
+        const val COMMAND_HEAT_OFF = "h"
+        const val COMMAND_COOL_ON = "C"
+        const val COMMAND_COOL_OFF = "c"
+        const val COMMAND_LIGHT_ON = "L"
+        const val COMMAND_LIGHT_OFF = "l"
+
+        /** Формат данных от Arduino */
+        const val ARDUINO_DATA_FORMAT = "battery,tempHot,tempCold,closed,state,overload"
+
+        /** Количество ожидаемых параметров в данных Arduino */
+        const val EXPECTED_PARAMETERS_COUNT = 6
+
+        /** Размер буфера для чтения данных */
+        private const val READ_BUFFER_SIZE = 1024
+
+        /** Максимальный размер буфера накопления данных */
+        private const val MAX_DATA_BUFFER_SIZE = 200
+
+        /** Задержка между циклами чтения данных (мс) */
+        private const val READ_DELAY_MS = 10L
+
+        /** Интервал между логами акселерометра (мс) */
+        private const val ACCELEROMETER_LOG_INTERVAL_MS = 2000L
+    }
+
+    //    === BLUETOOTH КОМПОНЕНТЫ ===
+
+    /** Bluetooth адаптер устройства */
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         val bluetoothManager =
             context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothManager.adapter
     }
 
+    /** Активное Bluetooth соединение */
     private var bluetoothSocket: BluetoothSocket? = null
+
+    /** Поток для чтения данных от Arduino */
     private var inputStream: InputStream? = null
+
+    /** Поток для отправки команд на Arduino */
     private var outputStream: OutputStream? = null
+
+    // === СОСТОЯНИЕ ПОДКЛЮЧЕНИЯ ===
+
+    /** Активно ли прослушивание данных */
     private var isListening = false
+
+    /** Подключено ли устройство */
     private var isConnected = false
+
+    /** Показан ли диалог выбора устройства (для предотвращения дублирования) */
     private var dialogShown = false
 
-    // Поля для симуляции
+    // === СИМУЛЯЦИЯ (DEBUG ONLY) ===
+
+    /** Включен ли режим симуляции Arduino */
     private var simulationMode = false
+
+    /** Экземпляр симулятора Arduino */
     private var arduinoSimulator: ArduinoSimulator? = null
+
+    /** Текущий сценарий симуляции */
     private var currentScenario = ArduinoSimulator.SimulationScenario.NORMAL
 
+    /** SharedPreferences для сохранения настроек симуляции */
     private val sharedPrefs =
         context.getSharedPreferences("bluetooth_helper_prefs", Context.MODE_PRIVATE)
 
-
     init {
+        // Очищаем данные симуляции в RELEASE режиме для безопасности
         clearSimulationDataIfRelease()
+        // Восстанавливаем состояние симуляции в DEBUG режиме
         restoreSimulationState()
     }
 
-    // === ПУБЛИЧНЫЕ МЕТОДЫ ===
+    // === ПУБЛИЧНЫЕ СВОЙСТВА ===
 
+    /** Включен ли режим симуляции */
     fun isSimulationEnabled(): Boolean = simulationMode
-    fun getCurrentScenario(): ArduinoSimulator.SimulationScenario = currentScenario
-    val isDeviceConnected: Boolean get() = if (simulationMode) true else isConnected
 
+    /** Текущий сценарий симуляции */
+    fun getCurrentScenario(): ArduinoSimulator.SimulationScenario = currentScenario
+
+    /** Подключено ли устройство (учитывает симуляцию) */
+    val isDeviceConnected: Boolean
+        get() = if (simulationMode) true else isConnected
+
+    // === УПРАВЛЕНИЕ УСТРОЙСТВАМИ ===
+
+    /**
+     * Показывает диалог выбора спаренного Bluetooth устройства
+     *
+     * @param context контекст для отображения диалога
+     * @param onDeviceSelected callback с выбранным устройством
+     */
     fun showDeviceSelectionDialog(context: Context, onDeviceSelected: (BluetoothDevice) -> Unit) {
         val pairedDevices = getPairedDevices()
         if (pairedDevices.isNullOrEmpty()) {
@@ -72,21 +272,26 @@ class BluetoothHelper(private val context: Context) {
             return
         }
 
-        val deviceNames = pairedDevices.map { device ->
-            getDeviceName(device)
-        }
+        val deviceNames = pairedDevices.map { device -> getDeviceName(device) }
         val deviceList = pairedDevices.toList()
 
-        val builder = AlertDialog.Builder(context)
-        builder.setTitle("Выберите Bluetooth-устройство")
-        builder.setItems(deviceNames.toTypedArray()) { _, which ->
-            onDeviceSelected(deviceList[which])
+        AlertDialog.Builder(context).apply {
+            setTitle("Выберите Bluetooth-устройство")
+            setItems(deviceNames.toTypedArray()) { _, which ->
+                onDeviceSelected(deviceList[which])
+            }
+            setOnDismissListener { dialogShown = false }
+            setNegativeButton("Отмена", null)
+            show()
         }
-        builder.setOnDismissListener { dialogShown = false }
-        builder.setNegativeButton("Отмена", null)
-        builder.show()
     }
 
+    /**
+     * Подключается к выбранному Bluetooth устройству
+     *
+     * @param device устройство для подключения
+     * @param onConnectionResult callback с результатом подключения (success, message)
+     */
     @Suppress("MissingPermission")
     fun connectToDevice(device: BluetoothDevice, onConnectionResult: (Boolean, String) -> Unit) {
         if (!hasBluetoothPermission()) {
@@ -108,9 +313,11 @@ class BluetoothHelper(private val context: Context) {
                     return@launch
                 }
 
+                // Создаем и устанавливаем соединение
                 bluetoothSocket = device.createRfcommSocketToServiceRecord(uuid)
                 bluetoothSocket?.connect()
 
+                // Инициализируем потоки данных
                 inputStream = bluetoothSocket?.inputStream
                 outputStream = bluetoothSocket?.outputStream
                 isConnected = true
@@ -120,15 +327,18 @@ class BluetoothHelper(private val context: Context) {
                     onConnectionResult(true, "Подключено к $deviceName")
                     startListening()
                 }
+
+                Log.i(TAG, "✅ Успешно подключено к ${getDeviceName(device)}")
+
             } catch (e: IOException) {
-                Log.e(TAG, "Ошибка подключения: ${e.message}")
+                Log.e(TAG, "❌ Ошибка подключения: ${e.message}")
                 isConnected = false
                 withContext(Dispatchers.Main) {
                     onConnectionResult(false, "Ошибка подключения: ${e.message}")
                 }
                 closeConnection()
             } catch (e: SecurityException) {
-                Log.e(TAG, "Ошибка безопасности: ${e.message}")
+                Log.e(TAG, "❌ Ошибка безопасности: ${e.message}")
                 isConnected = false
                 withContext(Dispatchers.Main) {
                     onConnectionResult(false, "Нет разрешений Bluetooth")
@@ -137,6 +347,13 @@ class BluetoothHelper(private val context: Context) {
         }
     }
 
+    // === ОБМЕН ДАННЫМИ ===
+
+    /**
+     * Начинает прослушивание данных от подключенного устройства
+     *
+     * @param onDataReceived callback для обработки полученных данных
+     */
     fun listenForData(onDataReceived: (String) -> Unit) {
         if (isConnected && inputStream != null) {
             startListening(onDataReceived)
@@ -144,34 +361,53 @@ class BluetoothHelper(private val context: Context) {
     }
 
     /**
-     * Прямая отправка команды (для обратной совместимости и внутреннего использования)
+     * Отправляет команду на Arduino устройство или симулятор
+     *
+     * Поддерживаемые команды:
+     * - H/h: управление нагревом
+     * - C/c: управление охлаждением
+     * - L/l: управление подсветкой
+     *
+     * @param command команда для отправки (одна буква)
      */
     fun sendCommand(command: String) {
-        Log.d(TAG, "📤 Прямая отправка команды: $command")
+        Log.d(TAG, "📤 Отправка команды: '$command'")
 
+        // В режиме симуляции передаем команду симулятору
         if (simulationMode) {
             arduinoSimulator?.handleCommand(command)
             return
         }
 
+        // Проверяем подключение к реальному устройству
         if (!isConnected || outputStream == null) {
-            Log.w(TAG, "Команда не отправлена: устройство не подключено")
+            Log.w(TAG, "⚠️ Команда не отправлена: устройство не подключено")
             return
         }
 
         try {
+            // Arduino ожидает команды с символом новой строки
             val commandWithNewline = "$command\n"
             outputStream?.write(commandWithNewline.toByteArray())
             outputStream?.flush()
 
-            Log.d(TAG, "✅ Команда отправлена: '$command'")
+            Log.d(TAG, "✅ Команда '$command' отправлена успешно")
         } catch (e: IOException) {
-            Log.e(TAG, "Ошибка отправки команды: ${e.message}")
+            Log.e(TAG, "❌ Ошибка отправки команды '$command': ${e.message}")
             isConnected = false
             closeConnection()
         }
     }
 
+    // === МОНИТОРИНГ BLUETOOTH ===
+
+    /**
+     * Настраивает мониторинг состояния Bluetooth адаптера и подключений
+     *
+     * @param context контекст приложения
+     * @param locationManager менеджер местоположения для логирования
+     * @param onStatusChange callback с изменениями состояния (isEnabled, isConnected)
+     */
     fun monitorBluetoothStatus(
         context: Context,
         locationManager: EnhancedLocationManager,
@@ -187,80 +423,69 @@ class BluetoothHelper(private val context: Context) {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     BluetoothAdapter.ACTION_STATE_CHANGED -> {
-                        val state =
-                            intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
-                        val isEnabled = state == BluetoothAdapter.STATE_ON
-
-                        if (state == BluetoothAdapter.STATE_TURNING_OFF || state == BluetoothAdapter.STATE_OFF) {
-                            disconnectDevice()
-                            LogModule.logEventWithLocation(
-                                context!!,
-                                this@BluetoothHelper,
-                                locationManager,
-                                "Bluetooth выключен"
-                            )
-                            dialogShown = false
-                        }
-
-                        onStatusChange(isEnabled, isConnected)
-
-                        if (isEnabled && !isConnected && !dialogShown) {
-                            dialogShown = true
-                            showDeviceSelection(context!!)
-                        }
+                        handleBluetoothStateChange(context, locationManager, intent, onStatusChange)
                     }
 
                     BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                        isConnected = true
-                        LogModule.logEventWithLocation(
-                            context!!, this@BluetoothHelper, locationManager, "Bluetooth подключен"
-                        )
-                        onStatusChange(true, true)
+                        handleDeviceConnected(context, locationManager, onStatusChange)
                     }
 
                     BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                        isConnected = false
-                        LogModule.logEventWithLocation(
-                            context!!, this@BluetoothHelper, locationManager, "Bluetooth отключен"
-                        )
-                        onStatusChange(true, false)
-
-                        if (isBluetoothEnabled() && !dialogShown) {
-                            dialogShown = true
-                            showDeviceSelection(context)
-                        }
+                        handleDeviceDisconnected(context, locationManager, onStatusChange)
                     }
                 }
             }
         }
 
         context.registerReceiver(receiver, filter)
+        Log.d(TAG, "🎧 Bluetooth мониторинг настроен")
     }
 
+    // === УПРАВЛЕНИЕ СОЕДИНЕНИЕМ ===
+
+    /**
+     * Отключает текущее устройство и очищает ресурсы
+     */
     fun disconnectDevice() {
         try {
             inputStream?.close()
             outputStream?.close()
             bluetoothSocket?.close()
+            Log.d(TAG, "🔌 Устройство отключено")
         } catch (e: IOException) {
-            Log.e(TAG, "Ошибка отключения: ${e.message}")
+            Log.e(TAG, "❌ Ошибка отключения: ${e.message}")
         } finally {
             isConnected = false
             isListening = false
             bluetoothSocket = null
+            inputStream = null
+            outputStream = null
             dialogShown = false
         }
     }
 
+    /**
+     * Псевдоним для disconnectDevice() для обратной совместимости
+     */
     fun closeConnection() = disconnectDevice()
 
+    /**
+     * Проверяет, включен ли Bluetooth адаптер
+     */
     fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
 
-    // === МЕТОДЫ СИМУЛЯЦИИ ===
+    // === СИМУЛЯЦИЯ ARDUINO (DEBUG ONLY) ===
 
+    /**
+     * Включает или выключает режим симуляции Arduino
+     * В RELEASE режиме симуляция заблокирована для безопасности
+     *
+     * @param enable true для включения симуляции
+     */
     fun enableSimulationMode(enable: Boolean) {
+        // Блокируем симуляцию в RELEASE режиме
         if (!BuildConfig.DEBUG && enable) {
-            Log.w(TAG, "RELEASE режим: попытка включить симуляцию заблокирована")
+            Log.w(TAG, "🚫 RELEASE режим: попытка включить симуляцию заблокирована")
             Toast.makeText(context, "Симуляция недоступна в релизной версии", Toast.LENGTH_SHORT)
                 .show()
             return
@@ -271,13 +496,16 @@ class BluetoothHelper(private val context: Context) {
 
         if (enable) {
             startArduinoSimulation()
-            Log.i(TAG, "Симуляция Arduino включена")
+            Log.i(TAG, "🔧 Симуляция Arduino включена")
         } else {
             stopArduinoSimulation()
-            Log.i(TAG, "Симуляция Arduino выключена")
+            Log.i(TAG, "🔧 Симуляция Arduino выключена")
         }
     }
 
+    /**
+     * Очищает все данные симуляции в RELEASE режиме для безопасности
+     */
     fun clearSimulationDataIfRelease() {
         if (!BuildConfig.DEBUG) {
             sharedPrefs.edit()
@@ -288,16 +516,25 @@ class BluetoothHelper(private val context: Context) {
             simulationMode = false
             stopArduinoSimulation()
 
-            Log.i(TAG, "RELEASE режим: все данные симуляции очищены")
+            Log.i(TAG, "🧹 RELEASE режим: все данные симуляции очищены")
         }
     }
 
+    /**
+     * Устанавливает сценарий симуляции
+     *
+     * @param scenario новый сценарий симуляции
+     */
     fun setSimulationScenario(scenario: ArduinoSimulator.SimulationScenario) {
         currentScenario = scenario
         sharedPrefs.edit().putString("current_scenario", scenario.name).apply()
         arduinoSimulator?.setScenario(scenario)
+        Log.d(TAG, "🎭 Сценарий симуляции изменен на: $scenario")
     }
 
+    /**
+     * Возвращает информацию о текущем сценарии симуляции
+     */
     fun getScenarioInfo(): ScenarioInfo {
         return when (currentScenario) {
             ArduinoSimulator.SimulationScenario.NORMAL ->
@@ -323,30 +560,47 @@ class BluetoothHelper(private val context: Context) {
         }
     }
 
-    // Методы управления симулятором
+    // === УПРАВЛЕНИЕ СИМУЛЯТОРОМ ===
+
+    /**
+     * Устанавливает уровень батареи в симуляторе
+     */
     fun setSimulationBattery(level: Int) = arduinoSimulator?.setBatteryLevel(level)
+
+    /**
+     * Устанавливает температуры отсеков в симуляторе
+     */
     fun setSimulationTemperatures(upper: Float, lower: Float) =
         arduinoSimulator?.setTemperatures(upper, lower)
 
+    /**
+     * Запускает имитацию тряски в симуляторе
+     */
     fun triggerSimulationShake(intensity: Float) = arduinoSimulator?.triggerShake(intensity)
 
     // === ПРИВАТНЫЕ МЕТОДЫ ===
 
+    /**
+     * Получает список спаренных Bluetooth устройств
+     */
     @Suppress("MissingPermission")
     private fun getPairedDevices(): Set<BluetoothDevice>? {
         return try {
             if (hasBluetoothConnectPermission()) {
                 bluetoothAdapter?.bondedDevices
             } else {
-                Log.w(TAG, "Нет разрешения BLUETOOTH_CONNECT для получения сопряженных устройств")
+                Log.w(TAG, "⚠️ Нет разрешения BLUETOOTH_CONNECT для получения устройств")
                 null
             }
         } catch (e: SecurityException) {
-            Log.e(TAG, "Ошибка доступа к сопряженным устройствам: ${e.message}")
+            Log.e(TAG, "❌ Ошибка доступа к спаренным устройствам: ${e.message}")
             null
         }
     }
 
+    /**
+     * Получает отображаемое имя Bluetooth устройства
+     */
     @Suppress("MissingPermission")
     private fun getDeviceName(device: BluetoothDevice): String {
         return try {
@@ -356,26 +610,32 @@ class BluetoothHelper(private val context: Context) {
                 "Нет доступа к имени"
             }
         } catch (e: SecurityException) {
-            Log.e(TAG, "Ошибка получения имени устройства: ${e.message}")
+            Log.e(TAG, "❌ Ошибка получения имени устройства: ${e.message}")
             "Ошибка доступа"
         }
     }
 
+    /**
+     * Получает UUID устройства для подключения
+     */
     @Suppress("MissingPermission")
     private fun getDeviceUuid(device: BluetoothDevice): UUID? {
         return try {
             if (hasBluetoothConnectPermission()) {
                 device.uuids?.firstOrNull()?.uuid ?: UUID.randomUUID()
             } else {
-                Log.w(TAG, "Нет разрешения для получения UUID")
+                Log.w(TAG, "⚠️ Нет разрешения для получения UUID")
                 null
             }
         } catch (e: SecurityException) {
-            Log.e(TAG, "Ошибка получения UUID: ${e.message}")
+            Log.e(TAG, "❌ Ошибка получения UUID: ${e.message}")
             null
         }
     }
 
+    /**
+     * Запускает прослушивание данных от Arduino в отдельной корутине
+     */
     private fun startListening(onDataReceived: ((String) -> Unit)? = null) {
         if (!isConnected || inputStream == null || isListening) return
 
@@ -383,7 +643,7 @@ class BluetoothHelper(private val context: Context) {
         Log.d(TAG, "🎧 Начинаем прослушивание Bluetooth данных")
 
         CoroutineScope(Dispatchers.IO).launch {
-            val buffer = ByteArray(1024)
+            val buffer = ByteArray(READ_BUFFER_SIZE)
             val dataBuffer = StringBuilder()
 
             try {
@@ -392,13 +652,9 @@ class BluetoothHelper(private val context: Context) {
                     if (bytes > 0) {
                         val newData = String(buffer, 0, bytes)
                         dataBuffer.append(newData)
-
-//                        Log.d(TAG, "📨 Получены байты: $bytes, данные: '$newData'")
-
                         processBufferedData(dataBuffer, onDataReceived)
                     }
-
-                    kotlinx.coroutines.delay(10)
+                    kotlinx.coroutines.delay(READ_DELAY_MS)
                 }
             } catch (e: IOException) {
                 Log.e(TAG, "❌ Ошибка чтения данных: ${e.message}")
@@ -413,6 +669,9 @@ class BluetoothHelper(private val context: Context) {
         }
     }
 
+    /**
+     * Обрабатывает буферизованные данные и извлекает валидные строки
+     */
     private suspend fun processBufferedData(
         buffer: StringBuilder,
         onDataReceived: ((String) -> Unit)?
@@ -420,11 +679,10 @@ class BluetoothHelper(private val context: Context) {
         val data = buffer.toString()
         val lines = data.split("\n")
 
+        // Обрабатываем все строки кроме последней (она может быть неполной)
         for (i in 0 until lines.size - 1) {
             val line = lines[i].trim()
             if (line.isNotEmpty()) {
-//                Log.d(TAG, "📦 Получена строка: '$line'")
-
                 if (isValidArduinoData(line)) {
                     Log.d(TAG, "✅ Валидные данные Arduino: '$line'")
                     withContext(Dispatchers.Main) {
@@ -437,20 +695,27 @@ class BluetoothHelper(private val context: Context) {
             }
         }
 
+        // Сохраняем последнюю (возможно неполную) строку в буфере
         buffer.clear()
         buffer.append(lines.last())
 
-        if (buffer.length > 200) {
-            Log.w(TAG, "⚠️ Буфер переполнен, очищаем")
+        // Защита от переполнения буфера
+        if (buffer.length > MAX_DATA_BUFFER_SIZE) {
+            Log.w(TAG, "⚠️ Буфер переполнен (${buffer.length} символов), очищаем")
             buffer.clear()
         }
     }
 
+    /**
+     * Проверяет валидность данных от Arduino
+     * Ожидаемый формат: "battery,temp1,temp2,closed,state,overload"
+     */
     private fun isValidArduinoData(data: String): Boolean {
         val parts = data.split(",")
         if (parts.size != 6) return false
 
         return try {
+            // Проверяем каждый параметр на соответствие ожидаемому формату
             val battery = parts[0].trim().toIntOrNull() ?: return false
             val temp1 = parts[1].trim()
             val temp2 = parts[2].trim()
@@ -458,6 +723,7 @@ class BluetoothHelper(private val context: Context) {
             val state = parts[4].trim().toIntOrNull() ?: return false
             val overload = parts[5].trim().toFloatOrNull() ?: return false
 
+            // Проверяем диапазоны значений
             battery in 0..100 &&
                     (temp1 == "er" || temp1.toFloatOrNull() != null) &&
                     (temp2 == "er" || temp2.toFloatOrNull() != null) &&
@@ -469,12 +735,85 @@ class BluetoothHelper(private val context: Context) {
         }
     }
 
+    // === ОБРАБОТЧИКИ BLUETOOTH СОБЫТИЙ ===
+
+    /**
+     * Обрабатывает изменения состояния Bluetooth адаптера
+     */
+    private fun handleBluetoothStateChange(
+        context: Context?,
+        locationManager: EnhancedLocationManager,
+        intent: Intent,
+        onStatusChange: (Boolean, Boolean) -> Unit
+    ) {
+        val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+        val isEnabled = state == BluetoothAdapter.STATE_ON
+
+        if (state == BluetoothAdapter.STATE_TURNING_OFF || state == BluetoothAdapter.STATE_OFF) {
+            disconnectDevice()
+            LogModule.logEventWithLocation(
+                context!!, this, locationManager, "Bluetooth выключен"
+            )
+            dialogShown = false
+        }
+
+        onStatusChange(isEnabled, isConnected)
+
+        if (isEnabled && !isConnected && !dialogShown) {
+            dialogShown = true
+            showDeviceSelection(context!!)
+        }
+    }
+
+    /**
+     * Обрабатывает подключение устройства
+     */
+    private fun handleDeviceConnected(
+        context: Context?,
+        locationManager: EnhancedLocationManager,
+        onStatusChange: (Boolean, Boolean) -> Unit
+    ) {
+        isConnected = true
+        LogModule.logEventWithLocation(
+            context!!, this, locationManager, "Bluetooth подключен"
+        )
+        onStatusChange(true, true)
+    }
+
+    /**
+     * Обрабатывает отключение устройства
+     */
+    private fun handleDeviceDisconnected(
+        context: Context?,
+        locationManager: EnhancedLocationManager,
+        onStatusChange: (Boolean, Boolean) -> Unit
+    ) {
+        isConnected = false
+        LogModule.logEventWithLocation(
+            context!!, this, locationManager, "Bluetooth отключен"
+        )
+        onStatusChange(true, false)
+
+        if (isBluetoothEnabled() && !dialogShown) {
+            dialogShown = true
+            showDeviceSelection(context)
+        }
+    }
+
+    // === ПРОВЕРКА РАЗРЕШЕНИЙ ===
+
+    /**
+     * Проверяет наличие всех необходимых Bluetooth разрешений
+     */
     private fun hasBluetoothPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             hasBluetoothConnectPermission() && hasBluetoothScanPermission()
         } else true
     }
 
+    /**
+     * Проверяет разрешение BLUETOOTH_CONNECT (Android 12+)
+     */
     private fun hasBluetoothConnectPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
@@ -482,6 +821,9 @@ class BluetoothHelper(private val context: Context) {
         } else true
     }
 
+    /**
+     * Проверяет разрешение BLUETOOTH_SCAN (Android 12+)
+     */
     private fun hasBluetoothScanPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) ==
@@ -489,29 +831,42 @@ class BluetoothHelper(private val context: Context) {
         } else true
     }
 
+    // === УПРАВЛЕНИЕ СИМУЛЯТОРОМ ===
+
+    /**
+     * Запускает симулятор Arduino
+     */
     private fun startArduinoSimulation() {
         arduinoSimulator = ArduinoSimulator { data ->
             (context as? MainActivity)?.handleReceivedData(data)
         }
         arduinoSimulator?.startSimulation()
         isConnected = true
+        Log.d(TAG, "🤖 Симулятор Arduino запущен")
     }
 
+    /**
+     * Останавливает симулятор Arduino
+     */
     private fun stopArduinoSimulation() {
         arduinoSimulator?.stopSimulation()
         arduinoSimulator = null
         if (simulationMode) isConnected = false
+        Log.d(TAG, "🤖 Симулятор Arduino остановлен")
     }
 
+    /**
+     * Восстанавливает состояние симуляции из SharedPreferences
+     */
     private fun restoreSimulationState() {
+        // В RELEASE режиме принудительно отключаем симуляцию
         if (!BuildConfig.DEBUG) {
-            sharedPrefs.edit()
-                .putBoolean("simulation_enabled", false)
-                .apply()
-            Log.i(TAG, "RELEASE режим: симуляция принудительно отключена")
+            sharedPrefs.edit().putBoolean("simulation_enabled", false).apply()
+            Log.i(TAG, "🚫 RELEASE режим: симуляция принудительно отключена")
             return
         }
 
+        // В DEBUG режиме восстанавливаем сохраненные настройки
         val savedSimulationEnabled = sharedPrefs.getBoolean("simulation_enabled", false)
         val savedScenarioName = sharedPrefs.getString(
             "current_scenario",
@@ -523,14 +878,18 @@ class BluetoothHelper(private val context: Context) {
                 ArduinoSimulator.SimulationScenario.valueOf(savedScenarioName ?: "NORMAL")
         } catch (e: IllegalArgumentException) {
             currentScenario = ArduinoSimulator.SimulationScenario.NORMAL
+            Log.w(TAG, "⚠️ Неизвестный сценарий '$savedScenarioName', используем NORMAL")
         }
 
         if (savedSimulationEnabled) {
             enableSimulationMode(true)
-            Log.i(TAG, "DEBUG режим: симуляция восстановлена из настроек")
+            Log.i(TAG, "🔧 DEBUG режим: симуляция восстановлена из настроек")
         }
     }
 
+    /**
+     * Показывает диалог выбора устройства в UI потоке
+     */
     private fun showDeviceSelection(context: Context) {
         (context as? ComponentActivity)?.runOnUiThread {
             if (!dialogShown) {
@@ -543,28 +902,5 @@ class BluetoothHelper(private val context: Context) {
                 }
             }
         }
-    }
-
-    /**
-     * ✅ НОВОЕ: Очистка ресурсов CommandManager
-     */
-    fun cleanup() {
-        try {
-            stopArduinoSimulation()
-            Log.d(TAG, "🧹 BluetoothHelper очищен")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка очистки BluetoothHelper: ${e.message}")
-        }
-    }
-
-    data class ScenarioInfo(
-        val name: String,
-        val icon: String,
-        val description: String,
-        val durationSeconds: Int
-    )
-
-    companion object {
-        private const val TAG = "BluetoothHelper"
     }
 }

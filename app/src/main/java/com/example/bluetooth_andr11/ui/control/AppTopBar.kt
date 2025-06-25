@@ -167,6 +167,8 @@ fun AppTopBar(
         if (showBatteryTooltip) {
             BatteryTooltipPopup(
                 batteryLevel = batteryLevel,
+                isDeviceConnected = isDeviceConnected, // 🔥 ДОБАВЛЕНО: передаем реальный статус
+                bluetoothHelper = bluetoothHelper, // 🔥 ДОБАВЛЕНО: передаем helper для проверки симуляции
                 onDismiss = { showBatteryTooltip = false }
             )
         }
@@ -182,14 +184,33 @@ fun AppTopBar(
 }
 
 /**
- * 💬 Popup tooltip для батареи
+ * 💬 Popup tooltip для батареи с актуальным статусом подключения
  */
 @Composable
 private fun BatteryTooltipPopup(
     batteryLevel: Int,
+    isDeviceConnected: Boolean, // 🔥 НОВЫЙ параметр
+    bluetoothHelper: BluetoothHelper?, // 🔥 НОВЫЙ параметр
     onDismiss: () -> Unit
 ) {
     val density = LocalDensity.current
+
+    // 🔥 ОПРЕДЕЛЯЕМ РЕАЛЬНЫЙ СТАТУС ПОДКЛЮЧЕНИЯ
+    val actualConnectionStatus = remember(isDeviceConnected, bluetoothHelper) {
+        when {
+            bluetoothHelper?.isSimulationEnabled() == true -> "🤖 Режим симуляции"
+            isDeviceConnected -> "📡 Подключена"
+            else -> "📵 Отключена"
+        }
+    }
+
+    val connectionColor = remember(isDeviceConnected, bluetoothHelper) {
+        when {
+            bluetoothHelper?.isSimulationEnabled() == true -> Color.Cyan
+            isDeviceConnected -> Color.Green
+            else -> Color.Red
+        }
+    }
 
     Popup(
         alignment = Alignment.TopEnd,
@@ -254,10 +275,10 @@ private fun BatteryTooltipPopup(
                     )
                 }
 
-                // 💡 Статус подключения
+                // 💡 АКТУАЛЬНЫЙ статус подключения
                 Text(
-                    text = "📡 Подключена",
-                    color = Color.Green,
+                    text = actualConnectionStatus, // 🔥 ИСПРАВЛЕНО: показываем реальный статус
+                    color = connectionColor, // 🔥 ИСПРАВЛЕНО: правильный цвет
                     fontSize = 10.sp
                 )
             }

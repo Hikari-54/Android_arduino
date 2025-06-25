@@ -1,5 +1,3 @@
-// 🔥 ОБНОВЛЕННЫЙ LogModule.kt с умным GPS логированием
-
 package com.example.bluetooth_andr11.log
 
 import android.content.Context
@@ -13,77 +11,151 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Централизованный модуль логирования событий доставочной сумки с умной фильтрацией спама.
+ *
+ * Основные возможности:
+ * - Интеллектуальное логирование GPS событий с предотвращением спама
+ * - Контекстно-зависимое логирование (критические события vs обычные)
+ * - Автоматическое добавление координат к событиям
+ * - Ограничение частоты повторяющихся событий
+ * - Специальная обработка температурных событий без ограничений
+ * - Статистика и аналитика логов
+ *
+ * Архитектурные принципы:
+ * - Thread-safe операции с файловой системой
+ * - Минимальное влияние на производительность
+ * - Автоматическое создание директорий логов
+ * - Graceful handling ошибок без прерывания работы приложения
+ * - Интеграция с BluetoothHelper и EnhancedLocationManager
+ *
+ * Типы событий:
+ * - СИСТЕМА: системные события (запуск, закрытие, изменения настроек)
+ * - ТЕМПЕРАТУРА: события температурного мониторинга (без ограничений)
+ * - ДЕЙСТВИЕ: действия пользователя (команды управления)
+ * - БАТАРЕЯ: события мониторинга заряда
+ * - ДАТЧИК_ХОЛЛА: открытие/закрытие сумки
+ * - АКСЕЛЕРОМЕТР: события тряски и движения
+ * - СИСТЕМА_GPS: события GPS с умной фильтрацией
+ */
 object LogModule {
     private const val TAG = "LogModule"
-    private val lastLoggedEventTime = mutableMapOf<String, Long>()
+
+    // === КОНСТАНТЫ КОНФИГУРАЦИИ ===
+
+    /** Директория для хранения логов */
+    private const val LOG_DIR_NAME = "logs"
+
+    /** Основной файл событий */
+    private const val EVENTS_LOG_FILE = "events_log.txt"
+
+    /** Файл логов местоположения */
+    private const val LOCATION_LOG_FILE = "location_log.txt"
+
+    /** Интервал между повторными GPS сообщениями (5 минут) */
+    private const val GPS_LOG_COOLDOWN = 5 * 60 * 1000L
+
+    /** Частота логирования при недоступности GPS (каждый 10-й раз) */
+    private const val GPS_UNAVAILABLE_LOG_FREQUENCY = 10
+
+    // === СОСТОЯНИЕ МОДУЛЯ ===
+
+    /** Форматтер для временных меток */
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
-    // 🔥 НОВОЕ: Состояние GPS для предотвращения спама
+    /** Кэш времени последних событий для предотвращения спама */
+    private val lastLoggedEventTime = mutableMapOf<String, Long>()
+
+    /** Состояние GPS для умной фильтрации */
     private var lastGpsState: Boolean? = null
     private var lastGpsLogTime = 0L
     private var consecutiveUnavailableCount = 0
-    private val GPS_LOG_COOLDOWN = 5 * 60 * 1000L // 5 минут между повторными сообщениями
 
-    // Основной метод логирования событий
+    // === ОСНОВНЫЕ МЕТОДЫ ЛОГИРОВАНИЯ ===
+
+    /**
+     * Базовый метод логирования событий в файл
+     *
+     * @param context контекст для доступа к файловой системе
+     * @param event текст события для записи
+     */
     fun logEvent(context: Context, event: String) {
         try {
-            val logDir = File(context.getExternalFilesDir(null), "logs")
-            if (!logDir.exists()) logDir.mkdirs()
+            val logDir = File(context.getExternalFilesDir(null), LOG_DIR_NAME)
+            if (!logDir.exists()) {
+                logDir.mkdirs()
+            }
 
-            val logFile = File(logDir, "events_log.txt")
-            logFile.appendText("${getCurrentTimestamp()} - $event\n")
+            val logFile = File(logDir, EVENTS_LOG_FILE)
+            val timestamp = getCurrentTimestamp()
+            logFile.appendText("$timestamp - $event\n")
 
             if (BuildConfig.DEBUG) {
-                Log.d(TAG, "Событие записано: $event")
+                Log.d(TAG, "📝 Событие записано: $event")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка записи лога: ${e.message}")
+            Log.e(TAG, "❌ Ошибка записи лога: ${e.message}")
+            // Не прерываем работу приложения при ошибках логирования
         }
     }
 
-    // 🔥 НОВЫЙ метод для умного логирования GPS изменений
+    /**
+     * Умное логирование изменений состояния GPS с предотвращением спама
+     *
+     * @param context контекст приложения
+     * @param isAvailable доступен ли GPS в данный момент
+     * @param reason дополнительная информация о причине изменения
+     */
     fun logGpsStateChange(context: Context, isAvailable: Boolean, reason: String = "") {
         val currentTime = System.currentTimeMillis()
 
-        // Если состояние не изменилось, проверяем нужно ли логировать
+        // Если состояние GPS не изменилось
         if (lastGpsState == isAvailable) {
             if (!isAvailable) {
                 consecutiveUnavailableCount++
 
-                // Логируем каждый 10-й раз недоступности или раз в 5 минут
-                if (consecutiveUnavailableCount % 10 == 0 ||
+                // Логируем только каждый N-й раз или по таймауту
+                if (consecutiveUnavailableCount % GPS_UNAVAILABLE_LOG_FREQUENCY == 0 ||
                     currentTime - lastGpsLogTime > GPS_LOG_COOLDOWN
                 ) {
-
-                    val logMessage = "GPS недоступен уже ${consecutiveUnavailableCount} раз подряд"
+                    val logMessage = "GPS недоступен уже $consecutiveUnavailableCount раз подряд"
                     logEvent(context, "СИСТЕМА_GPS: $logMessage")
                     lastGpsLogTime = currentTime
                 }
             }
-            return // Состояние не изменилось, выходим
+            return // Выходим, так как состояние не изменилось
         }
 
-        // Состояние изменилось - логируем обязательно
+        // Состояние изменилось - обязательно логируем
         lastGpsState = isAvailable
         lastGpsLogTime = currentTime
 
         val event = when {
             isAvailable -> {
-                consecutiveUnavailableCount = 0 // Сбрасываем счетчик
+                consecutiveUnavailableCount = 0 // Сбрасываем счетчик ошибок
                 "GPS ВОССТАНОВЛЕН - местоположение доступно"
             }
 
             else -> {
                 consecutiveUnavailableCount = 1
-                "GPS НЕДОСТУПЕН - потеря сигнала" + if (reason.isNotEmpty()) " ($reason)" else ""
+                "GPS НЕДОСТУПЕН - потеря сигнала" +
+                        if (reason.isNotEmpty()) " ($reason)" else ""
             }
         }
 
         logEvent(context, "СИСТЕМА_GPS: $event")
-        Log.i(TAG, "GPS состояние изменилось: $isAvailable")
+        Log.i(TAG, "🛰️ GPS состояние изменилось: $isAvailable")
     }
 
-    // Логирование с координатами (основной метод для событий с местоположением)
+    /**
+     * Логирование событий с автоматическим добавлением координат
+     *
+     * @param context контекст приложения
+     * @param bluetoothHelper для проверки состояния подключения
+     * @param locationManager для получения координат
+     * @param event текст события
+     * @param critical критическое ли событие (логируется всегда)
+     */
     fun logEventWithLocation(
         context: Context,
         bluetoothHelper: BluetoothHelper,
@@ -91,9 +163,10 @@ object LogModule {
         event: String,
         critical: Boolean = false
     ) {
-        // Критические события логируются всегда, обычные - только при подключенном Bluetooth
+        // Критические события логируются всегда
+        // Обычные события - только при подключенном устройстве
         if (!critical && !bluetoothHelper.isDeviceConnected) {
-            Log.d(TAG, "Пропущено событие: устройство не подключено")
+            Log.d(TAG, "⏭️ Пропущено событие: устройство не подключено")
             return
         }
 
@@ -103,15 +176,21 @@ object LogModule {
             append(event)
             append(" @ ")
 
+            // Добавляем информацию о местоположении
             if (locationInfo.coordinates != "Неизвестно") {
-                append("${locationInfo.coordinates} (${locationInfo.source}, ±${locationInfo.accuracy.toInt()}м)")
+                append("${locationInfo.coordinates} ")
+                append("(${locationInfo.source}, ±${locationInfo.accuracy.toInt()}м)")
             } else {
                 append("Координаты недоступны")
             }
 
+            // Для критических событий добавляем статус Bluetooth
             if (critical) {
-                val connectionStatus =
-                    if (bluetoothHelper.isDeviceConnected) "ПОДКЛЮЧЕНО" else "ОТКЛЮЧЕНО"
+                val connectionStatus = if (bluetoothHelper.isDeviceConnected) {
+                    "ПОДКЛЮЧЕНО"
+                } else {
+                    "ОТКЛЮЧЕНО"
+                }
                 append(" [BT: $connectionStatus]")
             }
         }
@@ -119,7 +198,16 @@ object LogModule {
         logEvent(context, logMessage)
     }
 
-    // Логирование с ограничением по времени (для предотвращения спама)
+    /**
+     * Логирование с ограничением по времени для предотвращения спама
+     *
+     * @param context контекст приложения
+     * @param bluetoothHelper для проверки состояния
+     * @param locationManager для координат
+     * @param event текст события
+     * @param timeLimitSeconds минимальный интервал между одинаковыми событиями
+     * @param critical критическое ли событие
+     */
     fun logEventWithLimit(
         context: Context,
         bluetoothHelper: BluetoothHelper,
@@ -131,32 +219,56 @@ object LogModule {
         val currentTime = System.currentTimeMillis()
         val lastTime = lastLoggedEventTime[event] ?: 0
 
+        // Проверяем, прошло ли достаточно времени с последнего такого же события
         if (!critical && currentTime - lastTime < timeLimitSeconds * 1000) {
-            return // Пропускаем, если событие недавно логировалось
+            return // Слишком рано для повторного логирования
         }
 
+        // Обновляем время последнего события
         lastLoggedEventTime[event] = currentTime
+
+        // Логируем событие с координатами
         logEventWithLocation(context, bluetoothHelper, locationManager, event, critical)
     }
 
-    // 🔥 УЛУЧШЕННОЕ логирование критических событий
+    // === СПЕЦИАЛИЗИРОВАННЫЕ МЕТОДЫ ===
+
+    /**
+     * Логирование критических событий с особой обработкой GPS
+     *
+     * @param context контекст приложения
+     * @param bluetoothHelper для проверки состояния
+     * @param locationManager для координат
+     * @param event текст критического события
+     */
     fun logCriticalEvent(
         context: Context,
         bluetoothHelper: BluetoothHelper,
         locationManager: EnhancedLocationManager,
         event: String
     ) {
-        // 🔥 НОВОЕ: Фильтруем повторяющиеся GPS события
-        if (event.contains("GPS") || event.contains("местоположение", ignoreCase = true)) {
-            val isGpsEvent = event.contains("включен") || event.contains("восстановлен")
-            logGpsStateChange(context, isGpsEvent, event)
+        // Специальная обработка GPS событий
+        if (event.contains("GPS", ignoreCase = true) ||
+            event.contains("местоположение", ignoreCase = true)
+        ) {
+
+            val isGpsAvailable = event.contains("включен", ignoreCase = true) ||
+                    event.contains("восстановлен", ignoreCase = true)
+            logGpsStateChange(context, isGpsAvailable, event)
         } else {
-            // Обычные критические события логируем как раньше
+            // Обычные критические события
             logEventWithLocation(context, bluetoothHelper, locationManager, event, critical = true)
         }
     }
 
-    // 🔥 НОВЫЙ метод для логирования пользовательских действий (всегда важно)
+    /**
+     * Логирование действий пользователя (всегда важны)
+     *
+     * @param context контекст приложения
+     * @param bluetoothHelper для состояния
+     * @param locationManager для координат
+     * @param action описание действия пользователя
+     */
     fun logUserAction(
         context: Context,
         bluetoothHelper: BluetoothHelper,
@@ -167,6 +279,15 @@ object LogModule {
         logEventWithLocation(context, bluetoothHelper, locationManager, "ДЕЙСТВИЕ: $action")
     }
 
+    /**
+     * Логирование системных событий с категоризацией
+     *
+     * @param context контекст приложения
+     * @param bluetoothHelper для состояния
+     * @param locationManager для координат
+     * @param event описание события
+     * @param category категория события для группировки
+     */
     fun logSystemEvent(
         context: Context,
         bluetoothHelper: BluetoothHelper,
@@ -174,143 +295,220 @@ object LogModule {
         event: String,
         category: String = "СИСТЕМА"
     ) {
-        // 🔥 СПЕЦИАЛЬНАЯ ОБРАБОТКА для температурных событий
-        if (category == "ТЕМПЕРАТУРА") {
-            // Температурные события логируются БЕЗ ограничений!
-            logEventWithLocation(
-                context, bluetoothHelper, locationManager,
-                "$category: $event", critical = true
-            )
-        } else {
-            // Остальные системные события - с ограничением
-            logEventWithLimit(
-                context, bluetoothHelper, locationManager,
-                "$category: $event",
-                timeLimitSeconds = 60 // Уменьшили с 300 до 60 секунд
-            )
-        }
-    }
-
-    // Устаревшие методы для обратной совместимости
-    @Deprecated("Используйте logEventWithLocation", ReplaceWith("logEventWithLocation"))
-    fun logEventWithEnhancedLocation(
-        context: Context,
-        bluetoothHelper: BluetoothHelper,
-        enhancedLocationManager: EnhancedLocationManager,
-        event: String
-    ) {
-        // 🔥 НОВОЕ: Определяем тип события и логируем соответствующе
-        when {
-            event.contains("GPS") || event.contains("местоположение", ignoreCase = true) -> {
-                logCriticalEvent(context, bluetoothHelper, enhancedLocationManager, event)
-            }
-
-            event.contains("включен") || event.contains("выключен") -> {
-                logUserAction(context, bluetoothHelper, enhancedLocationManager, event)
+        when (category) {
+            "ТЕМПЕРАТУРА" -> {
+                // Температурные события критически важны - логируем БЕЗ ограничений
+                logEventWithLocation(
+                    context, bluetoothHelper, locationManager,
+                    "$category: $event", critical = true
+                )
             }
 
             else -> {
-                logEventWithLocation(context, bluetoothHelper, enhancedLocationManager, event)
+                // Остальные системные события - с ограничением частоты
+                logEventWithLimit(
+                    context, bluetoothHelper, locationManager,
+                    "$category: $event",
+                    timeLimitSeconds = 60 // 1 минута между повторениями
+                )
             }
         }
     }
 
-    @Deprecated("Используйте logEventWithLimit", ReplaceWith("logEventWithLimit"))
-    fun logEventWithLocationAndLimit(
-        context: Context,
-        bluetoothHelper: BluetoothHelper,
-        locationManager: Any,
-        event: String,
-        timeLimitSeconds: Int = 60
-    ) {
-        if (locationManager is EnhancedLocationManager) {
-            logEventWithLimit(context, bluetoothHelper, locationManager, event, timeLimitSeconds)
-        } else {
-            logEvent(context, "$event @ Координаты недоступны (старый API)")
-        }
-    }
-
-    // Простое логирование местоположения (для внутреннего использования)
+    /**
+     * Простое логирование координат в отдельный файл для трекинга
+     *
+     * @param context контекст для доступа к файлам
+     * @param location объект Location с координатами
+     */
     fun logLocation(context: Context, location: Location) {
         try {
-            val logFile = File(context.getExternalFilesDir(null), "logs/location_log.txt")
-            logFile.parentFile?.mkdirs()
+            val logDir = File(context.getExternalFilesDir(null), LOG_DIR_NAME)
+            if (!logDir.exists()) {
+                logDir.mkdirs()
+            }
 
-            val logEntry =
-                "${getCurrentTimestamp()}, ${location.latitude}, ${location.longitude}, ${location.accuracy}, ${location.bearing}\n"
+            val logFile = File(logDir, LOCATION_LOG_FILE)
+            val timestamp = getCurrentTimestamp()
+
+            // Формат: timestamp, lat, lon, accuracy, bearing
+            val logEntry = buildString {
+                append(timestamp)
+                append(", ${location.latitude}")
+                append(", ${location.longitude}")
+                append(", ${location.accuracy}")
+                append(", ${if (location.hasBearing()) location.bearing else 0.0f}")
+                append("\n")
+            }
+
             logFile.appendText(logEntry)
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка записи локации: ${e.message}")
+            Log.e(TAG, "❌ Ошибка записи координат: ${e.message}")
         }
     }
 
-    // 🔥 УЛУЧШЕННАЯ статистика с GPS информацией
+    // === СТАТИСТИКА И АНАЛИТИКА ===
+
+    /**
+     * Получает подробную статистику логов для мониторинга
+     *
+     * @param context контекст для доступа к файлам
+     * @return объект LogStatistics с аналитикой
+     */
     fun getLogStatistics(context: Context): LogStatistics {
         return try {
-            val logFile = File(context.getExternalFilesDir(null), "logs/events_log.txt")
+            val logDir = File(context.getExternalFilesDir(null), LOG_DIR_NAME)
+            val logFile = File(logDir, EVENTS_LOG_FILE)
+
             if (!logFile.exists()) {
                 LogStatistics(0, 0, 0, 0, "Нет логов")
             } else {
                 val lines = logFile.readLines()
+
+                // Подсчитываем различные типы событий
                 val totalEvents = lines.size
                 val criticalEvents = lines.count { it.contains("КРИТИЧЕСКОЕ") }
-                val gpsEvents = lines.count {
-                    it.contains("🛰️") || it.contains("📡") || it.contains("📶") || it.contains("GPS")
+                val gpsEvents = lines.count { line ->
+                    line.contains("🛰️") || line.contains("📡") ||
+                            line.contains("📶") || line.contains("GPS")
                 }
                 val userActions = lines.count { it.contains("ДЕЙСТВИЕ:") }
-                val lastEventTime =
-                    lines.lastOrNull()?.substringBefore(" -")?.trim() ?: "Нет событий"
+                val temperatureEvents = lines.count { it.contains("ТЕМПЕРАТУРА:") }
 
-                LogStatistics(totalEvents, criticalEvents, gpsEvents, userActions, lastEventTime)
+                // Находим время последнего события
+                val lastEventTime = lines.lastOrNull()
+                    ?.substringBefore(" -")
+                    ?.trim()
+                    ?: "Нет событий"
+
+                LogStatistics(
+                    totalEvents = totalEvents,
+                    criticalEvents = criticalEvents,
+                    gpsEvents = gpsEvents,
+                    userActions = userActions,
+                    lastEventTime = lastEventTime,
+                    temperatureEvents = temperatureEvents
+                )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка получения статистики: ${e.message}")
-            LogStatistics(0, 0, 0, 0, "Ошибка чтения")
+            Log.e(TAG, "❌ Ошибка получения статистики: ${e.message}")
+            LogStatistics(0, 0, 0, 0, "Ошибка чтения", 0)
         }
     }
 
-    // Очистка старых логов
-    fun clearOldLogs(context: Context, daysToKeep: Int = 30): Int {
-        return try {
-            val logFile = File(context.getExternalFilesDir(null), "logs/events_log.txt")
-            if (!logFile.exists()) return 0
-
-            val cutoffTime = System.currentTimeMillis() - (daysToKeep * 24 * 60 * 60 * 1000L)
-            val lines = logFile.readLines()
-
-            val filteredLines = lines.filter { line ->
-                val timestamp = line.substringBefore(" -").trim()
-                try {
-                    val date = dateFormat.parse(timestamp)
-                    date != null && date.time >= cutoffTime
-                } catch (e: Exception) {
-                    true // Сохраняем строки с некорректными датами
-                }
-            }
-
-            val removedCount = lines.size - filteredLines.size
-            if (removedCount > 0) {
-                logFile.writeText(filteredLines.joinToString("\n") + "\n")
-                Log.i(TAG, "Удалено $removedCount старых записей")
-            }
-
-            removedCount
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка очистки логов: ${e.message}")
-            0
-        }
+    /**
+     * Очищает кэш событий для освобождения памяти
+     */
+    fun clearEventCache() {
+        lastLoggedEventTime.clear()
+        Log.d(TAG, "🧹 Кэш событий очищен")
     }
 
+    /**
+     * Получает информацию о состоянии GPS логирования
+     */
+    fun getGpsLoggingStatus(): GpsLoggingStatus {
+        return GpsLoggingStatus(
+            lastKnownState = lastGpsState,
+            consecutiveUnavailableCount = consecutiveUnavailableCount,
+            lastLogTime = lastGpsLogTime,
+            cooldownRemaining = if (lastGpsLogTime > 0) {
+                maxOf(0, GPS_LOG_COOLDOWN - (System.currentTimeMillis() - lastGpsLogTime))
+            } else 0
+        )
+    }
+
+    // === УТИЛИТАРНЫЕ МЕТОДЫ ===
+
+    /**
+     * Получает текущую временную метку в стандартном формате
+     */
     private fun getCurrentTimestamp(): String {
         return dateFormat.format(Date())
     }
 
-    // 🔥 ОБНОВЛЕННЫЙ data class для статистики
+    // === DATA CLASSES ===
+
+    /**
+     * Статистика логов для аналитики и мониторинга
+     *
+     * @param totalEvents общее количество событий
+     * @param criticalEvents количество критических событий
+     * @param gpsEvents количество GPS событий
+     * @param userActions количество действий пользователя
+     * @param lastEventTime время последнего события
+     * @param temperatureEvents количество температурных событий
+     */
     data class LogStatistics(
         val totalEvents: Int,
         val criticalEvents: Int,
         val gpsEvents: Int,
         val userActions: Int,
-        val lastEventTime: String
-    )
+        val lastEventTime: String,
+        val temperatureEvents: Int = 0
+    ) {
+        /**
+         * Возвращает краткую сводку статистики
+         */
+        fun getSummary(): String {
+            return "Всего: $totalEvents | Критические: $criticalEvents | " +
+                    "GPS: $gpsEvents | Действия: $userActions | Температура: $temperatureEvents"
+        }
+
+        /**
+         * Возвращает детальную информацию
+         */
+        fun getDetailedInfo(): String {
+            return buildString {
+                appendLine("📊 Статистика логов:")
+                appendLine("• Всего событий: $totalEvents")
+                appendLine("• Критические события: $criticalEvents")
+                appendLine("• GPS события: $gpsEvents")
+                appendLine("• Действия пользователя: $userActions")
+                appendLine("• Температурные события: $temperatureEvents")
+                appendLine("• Последнее событие: $lastEventTime")
+            }
+        }
+
+        /**
+         * Проверяет, есть ли события в логах
+         */
+        fun hasEvents(): Boolean = totalEvents > 0
+
+        /**
+         * Вычисляет процент критических событий
+         */
+        fun getCriticalEventsPercentage(): Int {
+            return if (totalEvents > 0) {
+                (criticalEvents * 100) / totalEvents
+            } else 0
+        }
+    }
+
+    /**
+     * Состояние GPS логирования для отладки
+     */
+    data class GpsLoggingStatus(
+        val lastKnownState: Boolean?,
+        val consecutiveUnavailableCount: Int,
+        val lastLogTime: Long,
+        val cooldownRemaining: Long
+    ) {
+        /**
+         * Возвращает описание состояния
+         */
+        fun getStatusDescription(): String {
+            val stateText = when (lastKnownState) {
+                true -> "🟢 Доступен"
+                false -> "🔴 Недоступен ($consecutiveUnavailableCount раз)"
+                null -> "❓ Неизвестно"
+            }
+
+            val cooldownText = if (cooldownRemaining > 0) {
+                " (кулдаун: ${cooldownRemaining / 1000}с)"
+            } else ""
+
+            return "GPS: $stateText$cooldownText"
+        }
+    }
 }

@@ -19,12 +19,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +43,7 @@ import com.example.bluetooth_andr11.ui.auth.PasswordProtectedContent
 import com.example.bluetooth_andr11.ui.control.CardButton
 import com.example.bluetooth_andr11.ui.map_log.MapModal
 import com.example.bluetooth_andr11.utils.LogHelper.filterLogEntries
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -57,6 +58,7 @@ fun LogScreen(navController: NavController) {
 @Composable
 private fun LogScreenContent(navController: NavController) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var startDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var logEntries by remember { mutableStateOf(listOf<String>()) }
@@ -107,9 +109,11 @@ private fun LogScreenContent(navController: NavController) {
         LogFilterScreen { start, end ->
             startDate = start
             endDate = end
-            val rawEntries = filterLogEntries(context, start, end)
-            logEntries = sortLogEntriesByDateDescending(rawEntries)
-            Log.d("LogScreen", "📊 Загружено и отсортировано ${logEntries.size} записей")
+            scope.launch {
+                val rawEntries = filterLogEntries(context, start, end)
+                logEntries = sortLogEntriesByDateDescending(rawEntries)
+                Log.d("LogScreen", "📊 Загружено и отсортировано ${logEntries.size} записей")
+            }
         }
 
         // Индикатор количества записей
@@ -487,7 +491,7 @@ fun LogFilterScreen(onFilterApplied: (String, String) -> Unit) {
             onClick = {
                 if (startDate.isNotEmpty() && endDate.isNotEmpty()) {
                     Log.d("LogScreen", "🔍 Фильтрация логов: $startDate - $endDate")
-                    onFilterApplied(startDate, endDate)
+                    onFilterApplied(startDate, endDate) // ← Просто передать даты
                 }
             },
             backgroundColor = Color(0xFF4CAF50),
