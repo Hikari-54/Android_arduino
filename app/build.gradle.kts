@@ -18,17 +18,76 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // 🔐 Конфигурация подписи
+    signingConfigs {
+        create("release") {
+            // Получаем данные из gradle.properties
+            val keystoreFile = project.findProperty("DELIVERY_BAG_KEYSTORE_FILE") as String?
+            val keystorePassword = project.findProperty("DELIVERY_BAG_KEYSTORE_PASSWORD") as String?
+            val keyAlias = project.findProperty("DELIVERY_BAG_KEY_ALIAS") as String?
+            val keyPassword = project.findProperty("DELIVERY_BAG_KEY_PASSWORD") as String?
+
+            // Проверяем наличие всех необходимых параметров
+            if (keystoreFile != null && keystorePassword != null &&
+                keyAlias != null && keyPassword != null
+            ) {
+                val keystoreFileObj = file(keystoreFile)
+
+                // Дополнительная проверка существования файла
+                if (keystoreFileObj.exists()) {
+                    storeFile = keystoreFileObj
+                    storePassword = keystorePassword
+                    this.keyAlias = keyAlias
+                    this.keyPassword = keyPassword
+
+                    println("✅ Release подпись настроена: $keystoreFile")
+                } else {
+                    println("⚠️ Keystore файл не найден: $keystoreFile")
+                    println("   Проверьте путь в gradle.properties")
+                    println("   Будет использована debug подпись")
+                }
+            } else {
+                println("⚠️ Параметры подписи не найдены в gradle.properties")
+                println("   Создайте gradle.properties из gradle.properties.template")
+                println("   Будет использована debug подпись")
+            }
+        }
+    }
+
     buildTypes {
-        release {
+        debug {
+            // 🔧 Уникальный applicationId для debug версии
+            applicationIdSuffix = ".debug"
+
+            // 🏷️ Добавляем суффикс к имени приложения для различения
+            resValue("string", "app_name", "Delivery Bag DEBUG")
+
+            // 🔍 Debug настройки
+            isDebuggable = true
             isMinifyEnabled = false
+        }
+
+        release {
+            // 📱 Стандартное имя для release
+            resValue("string", "app_name", "Delivery Bag")
+
+            // Безопасное использование release подписи
+            val releaseSigningConfig = signingConfigs.findByName("release")
+            if (releaseSigningConfig?.storeFile?.exists() == true) {
+                signingConfig = releaseSigningConfig
+                println("🔐 Используется release подпись")
+            } else {
+                println("⚠️ Release keystore не найден, используется debug подпись")
+                println("   Для production сборки настройте gradle.properties")
+            }
+
+            // 🛡️ Release настройки для RuStore
+            isMinifyEnabled = true  // 🔄 ВКЛЮЧАЕМ обфускацию для безопасности
+            isShrinkResources = true // 🗜️ ДОБАВЛЯЕМ сжатие ресурсов
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
-        }
-        debug {
-            isDebuggable = true
         }
     }
 

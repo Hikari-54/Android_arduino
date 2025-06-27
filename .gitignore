@@ -10,14 +10,26 @@ captures/
 .cxx/
 
 # Файлы зависимостей и локальных настроек
-/local.properties
+local.properties
+gradle.properties
 .gradle/
 /out/
 /build/
 
+# Backup файлы
+*.backup
+*.bak
+
+# Ключи подписи
+*.jks
+*.keystore
+keystore/
+keys/
+
 # Файлы скриптов и сгенерированных данных
 *.log
 *.tmp
+*.temp
 *.swp
 *.swo
 

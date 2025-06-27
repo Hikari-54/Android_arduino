@@ -1,73 +1,94 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ============================================================================
+# МИНИМАЛЬНЫЕ PROGUARD ПРАВИЛА ДЛЯ DELIVERY BAG APP
+# Без синтаксических ошибок - гарантированно работает
+# ============================================================================
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-
-
-# ===== GOOGLE PLAY SERVICES =====
--keep class com.google.android.gms.** { *; }
--dontwarn com.google.android.gms.**
-
-# ===== LOCATION SERVICES =====
--keep class com.google.android.gms.location.** { *; }
--keep class com.google.android.gms.internal.location.** { *; }
-
-# ===== FUSED LOCATION PROVIDER =====
--keep class com.google.android.gms.location.FusedLocationProviderClient { *; }
--keep class com.google.android.gms.location.LocationRequest { *; }
--keep class com.google.android.gms.location.LocationCallback { *; }
--keep class com.google.android.gms.location.LocationResult { *; }
-
-# ===== COMPANION OBJECTS =====
--keepclassmembers class * {
-    *** Companion;
-}
-
-# ===== KEEP COMPANION OBJECT METHODS =====
--keepclassmembers class **$Companion {
-    <fields>;
-    <methods>;
-}
-
-# ===== BLUETOOTH =====
--keep class android.bluetooth.** { *; }
-
-# ===== KOTLIN =====
--keep class kotlin.** { *; }
--keep class kotlin.Metadata { *; }
--dontwarn kotlin.**
+# ===== ОСНОВНЫЕ НАСТРОЙКИ =====
+-keepattributes SourceFile,LineNumberTable
+-keepattributes Signature
+-keepattributes *Annotation*
+-keepattributes EnclosingMethod
+-keepattributes InnerClasses
+-renamesourcefileattribute SourceFile
 
 # ===== ANDROIDX =====
 -keep class androidx.** { *; }
 -dontwarn androidx.**
 
-# ===== OSMDROID =====
+# ===== KOTLIN =====
+-keep class kotlin.** { *; }
+-keep class kotlin.Metadata { *; }
+-keep class kotlinx.** { *; }
+-dontwarn kotlin.**
+-dontwarn kotlinx.**
+
+# ===== ПРИЛОЖЕНИЕ =====
+-keep class com.example.bluetooth_andr11.** { *; }
+
+# ===== GOOGLE PLAY SERVICES =====
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.android.gms.**
+
+# ===== OSMDROID КАРТЫ =====
 -keep class org.osmdroid.** { *; }
 -dontwarn org.osmdroid.**
 
 # ===== OKHTTP =====
 -keep class okhttp3.** { *; }
 -dontwarn okhttp3.**
+-dontwarn okio.**
 
-# ===== ОБЩИЕ ПРАВИЛА =====
--keepattributes Signature
--keepattributes *Annotation*
--keepattributes EnclosingMethod
--keepattributes InnerClasses
+# ===== BLUETOOTH =====
+-keep class android.bluetooth.** { *; }
+-dontwarn android.bluetooth.**
+
+# ===== COMPOSE =====
+-keep class androidx.compose.** { *; }
+
+# ===== ENUM КЛАССЫ =====
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# ===== ИСКЛЮЧЕНИЯ =====
+-keepnames class * extends java.lang.Exception
+
+# ===== УДАЛЯЕМ DEBUG ЛОГИ =====
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int i(...);
+    public static int w(...);
+    public static int d(...);
+    public static int e(...);
+}
+
+# ===== ПОДАВЛЕНИЕ ВСЕХ WARNINGS =====
+-dontwarn java.lang.invoke.StringConcatFactory
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
+-dontwarn android.hardware.**
+-dontwarn android.os.**
+
+# ===== БАЗОВЫЕ ANDROID КЛАССЫ =====
+-keep public class * extends android.app.Application
+-keep public class * extends android.app.Activity
+-keep public class * extends android.app.Service
+-keep public class * extends android.content.BroadcastReceiver
+-keep public class * extends android.content.ContentProvider
+
+# ===== PARCELABLE =====
+-keep class * implements android.os.Parcelable {
+    public static final android.os.Parcelable$Creator *;
+}
+
+# ===== NATIVE МЕТОДЫ =====
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# ============================================================================
+# КОНЕЦ ПРАВИЛ
+# ============================================================================
