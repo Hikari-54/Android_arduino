@@ -16,11 +16,12 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
-import com.example.bluetooth_andr11.simulation.ArduinoSimulator
 import com.example.bluetooth_andr11.BuildConfig
 import com.example.bluetooth_andr11.MainActivity
+import com.example.bluetooth_andr11.auth.AuthenticationManager
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.log.LogModule
+import com.example.bluetooth_andr11.simulation.ArduinoSimulator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,6 +51,8 @@ import java.util.UUID
  */
 class BluetoothHelper(private val context: Context) {
 
+    private var authenticationManager: AuthenticationManager? = null
+
     // === ОЧИСТКА РЕСУРСОВ ===
 
     /**
@@ -77,16 +80,30 @@ class BluetoothHelper(private val context: Context) {
     /**
      * Возвращает статистику подключений для отладки
      */
-    fun getConnectionStatistics(): ConnectionStatistics {
-        return ConnectionStatistics(
-            isBluetoothEnabled = isBluetoothEnabled(),
-            isDeviceConnected = isDeviceConnected,
-            isSimulationMode = simulationMode,
-            currentScenario = currentScenario,
-            isListening = isListening,
-            hasInputStream = inputStream != null,
-            hasOutputStream = outputStream != null
-        )
+    fun getConnectionStatistics(): String {
+        val authStats = authenticationManager?.getAuthenticationStatistics()
+
+        return buildString {
+            appendLine("=== BLUETOOTH CONNECTION STATISTICS ===")
+            appendLine("Bluetooth включен: ${isBluetoothEnabled()}")
+            appendLine("Устройство подключено: $isDeviceConnected")
+            appendLine("Режим симуляции: $simulationMode")
+            appendLine("Текущий сценарий: $currentScenario")
+            appendLine("Прослушивание: $isListening")
+            appendLine("Входящий поток: ${inputStream != null}")
+            appendLine("Исходящий поток: ${outputStream != null}")
+            appendLine()
+            appendLine("=== AUTHENTICATION STATUS ===")
+            if (authStats != null) {
+                appendLine("Аутентифицирован: ${authStats.isAuthenticated}")
+                appendLine("ID сумки: ${authStats.currentBagId ?: "Отсутствует"}")
+                appendLine("Попыток аутентификации: ${authStats.totalAttempts}")
+                appendLine("Успешных: ${authStats.successfulAuthentications}")
+            } else {
+                appendLine("AuthenticationManager не установлен")
+            }
+            appendLine("=======================================")
+        }
     }
 
     /**
@@ -174,6 +191,9 @@ class BluetoothHelper(private val context: Context) {
         const val COMMAND_LIGHT_ON = "L"
         const val COMMAND_LIGHT_OFF = "l"
 
+        /** Префикс команды аутентификации от сумки */
+        private const val AUTHENTICATION_PREFIX = "ID:"
+
         /** Формат данных от Arduino */
         const val ARDUINO_DATA_FORMAT = "battery,tempHot,tempCold,closed,state,overload"
 
@@ -255,6 +275,113 @@ class BluetoothHelper(private val context: Context) {
     /** Подключено ли устройство (учитывает симуляцию) */
     val isDeviceConnected: Boolean
         get() = if (simulationMode) true else isConnected
+
+    // === АУТЕНТИФИКАЦИЯ ===
+
+    /**
+     * Устанавливает менеджер аутентификации для обработки ID сообщений от сумок.
+     * Вызывается из AppInitializer после создания AuthenticationManager.
+     */
+    fun setAuthenticationManager(authManager: AuthenticationManager) {
+        this.authenticationManager = authManager
+        Log.d(TAG, "🔐 AuthenticationManager подключен к BluetoothHelper")
+    }
+
+    /**
+     * Определяет тип входящего сообщения и направляет его в соответствующий обработчик.
+     *
+     * @param message входящее сообщение от сумки
+     * @return true если сообщение было обработано
+     */
+    private fun routeIncomingMessage(message: String): Boolean {
+        Log.d(
+            TAG,
+            "🚏 МАРШРУТИЗАЦИЯ: '$message' | Аутентификация: ${
+                message.trim().startsWith("ID:")
+            } | Arduino частей: ${message.split(",").size}"
+        )
+
+        return try {
+            when {
+                isAuthenticationMessage(message) -> {
+                    Log.d(TAG, "🔐 -> Аутентификация")
+                    handleAuthenticationMessage(message)
+                }
+
+                isValidArduinoData(message) -> {
+                    Log.d(TAG, "📊 -> Arduino данные")
+                    handleArduinoDataMessage(message)
+                }
+
+                else -> {
+                    Log.w(TAG, "❓ -> Неизвестный тип")
+                    false
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "💥 ОШИБКА: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Проверяет, является ли сообщение командой аутентификации.
+     */
+    private fun isAuthenticationMessage(message: String): Boolean {
+        val trimmed = message.trim()
+        val result = trimmed.startsWith("ID:")
+        Log.d(TAG, "🔍 AUTH CHECK: '$message' -> '$trimmed' -> $result")
+        return result
+    }
+
+    /**
+     * Обрабатывает сообщение аутентификации через AuthenticationManager.
+     */
+    private fun handleAuthenticationMessage(message: String): Boolean {
+        Log.d(TAG, "🔐 AUTH MESSAGE: '$message', Manager: ${authenticationManager != null}")
+
+        return if (authenticationManager != null) {
+            Log.d(TAG, "🔐 Передача сообщения аутентификации: '$message'")
+            authenticationManager!!.processAuthenticationMessage(message)
+        } else {
+            Log.e(TAG, "❌ AuthenticationManager не установлен, невозможно обработать: '$message'")
+            false
+        }
+    }
+
+    /**
+     * Обрабатывает обычные данные от Arduino через существующую логику.
+     */
+    private fun handleArduinoDataMessage(message: String): Boolean {
+        Log.d(TAG, "📊 Передача Arduino данных в MainActivity: '$message'")
+
+        return try {
+            val mainActivity = context as? MainActivity
+            if (mainActivity != null) {
+                Log.d(TAG, "📊 MainActivity найдена, передаю данные")
+                mainActivity.handleReceivedData(message)
+                Log.d(TAG, "📊 Данные успешно переданы в MainActivity")
+                true
+            } else {
+                Log.e(TAG, "❌ Context не является MainActivity!")
+                Log.e(TAG, "❌ Actual context type: ${context::class.java.simpleName}")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "💥 ОШИБКА передачи данных в MainActivity: ${e.message}")
+            Log.e(TAG, "💥 Stack trace: ${e.stackTraceToString()}")
+            false
+        }
+    }
+
+    /**
+     * Сбрасывает аутентификацию при отключении устройства.
+     * Вызывается из существующих методов отключения.
+     */
+    private fun resetAuthenticationOnDisconnect() {
+        authenticationManager?.resetAuthentication()
+        Log.d(TAG, "🔄 Аутентификация сброшена при отключении BT")
+    }
 
     // === УПРАВЛЕНИЕ УСТРОЙСТВАМИ ===
 
@@ -447,6 +574,7 @@ class BluetoothHelper(private val context: Context) {
      * Отключает текущее устройство и очищает ресурсы
      */
     fun disconnectDevice() {
+        resetAuthenticationOnDisconnect()
         try {
             inputStream?.close()
             outputStream?.close()
@@ -683,14 +811,25 @@ class BluetoothHelper(private val context: Context) {
         for (i in 0 until lines.size - 1) {
             val line = lines[i].trim()
             if (line.isNotEmpty()) {
-                if (isValidArduinoData(line)) {
-                    Log.d(TAG, "✅ Валидные данные Arduino: '$line'")
-                    withContext(Dispatchers.Main) {
-                        onDataReceived?.invoke(line)
-                            ?: (context as? MainActivity)?.handleReceivedData(line)
+                Log.d(TAG, "🔍 Обрабатываем строку: '$line'")
+
+                withContext(Dispatchers.Main) {
+                    // ИСПРАВЛЕНИЕ: Используем новую логику маршрутизации
+                    val wasProcessed = routeIncomingMessage(line)
+
+                    if (!wasProcessed) {
+                        Log.w(TAG, "❌ Строка не обработана через маршрутизацию: '$line'")
+
+                        // Fallback: если есть внешний обработчик, используем его
+                        if (onDataReceived != null) {
+                            Log.d(TAG, "🔄 Использую fallback обработчик для: '$line'")
+                            onDataReceived.invoke(line)
+                        } else {
+                            // Пустая else ветка
+                        }
+                    } else {
+                        Log.d(TAG, "✅ Строка успешно обработана: '$line'")
                     }
-                } else {
-                    Log.w(TAG, "❌ Невалидные данные: '$line' (параметров: ${line.split(",").size})")
                 }
             }
         }
@@ -711,26 +850,65 @@ class BluetoothHelper(private val context: Context) {
      * Ожидаемый формат: "battery,temp1,temp2,closed,state,overload"
      */
     private fun isValidArduinoData(data: String): Boolean {
+        Log.d(TAG, "🔬 Проверка Arduino данных: '$data'")
+
         val parts = data.split(",")
-        if (parts.size != 6) return false
+        Log.d(TAG, "🔬 Количество частей: ${parts.size} (ожидается 6)")
+
+        if (parts.size != 6) {
+            Log.w(TAG, "❌ Неверное количество параметров: ${parts.size}")
+            return false
+        }
 
         return try {
-            // Проверяем каждый параметр на соответствие ожидаемому формату
-            val battery = parts[0].trim().toIntOrNull() ?: return false
-            val temp1 = parts[1].trim()
-            val temp2 = parts[2].trim()
-            val closed = parts[3].trim().toIntOrNull() ?: return false
-            val state = parts[4].trim().toIntOrNull() ?: return false
-            val overload = parts[5].trim().toFloatOrNull() ?: return false
+            // Проверяем каждый параметр с детальным логированием
+            val battery = parts[0].trim().toIntOrNull()
+            Log.d(TAG, "🔬 Battery: '${parts[0].trim()}' -> $battery")
+            if (battery == null || battery !in 0..100) {
+                Log.w(TAG, "❌ Неверный battery: $battery")
+                return false
+            }
 
-            // Проверяем диапазоны значений
-            battery in 0..100 &&
-                    (temp1 == "er" || temp1.toFloatOrNull() != null) &&
-                    (temp2 == "er" || temp2.toFloatOrNull() != null) &&
-                    closed in 0..1 &&
-                    state >= 0 &&
-                    overload >= 0.0f
+            val temp1 = parts[1].trim()
+            Log.d(TAG, "🔬 Temp1: '$temp1'")
+            if (temp1 != "er" && temp1.toFloatOrNull() == null) {
+                Log.w(TAG, "❌ Неверный temp1: '$temp1'")
+                return false
+            }
+
+            val temp2 = parts[2].trim()
+            Log.d(TAG, "🔬 Temp2: '$temp2'")
+            if (temp2 != "er" && temp2.toFloatOrNull() == null) {
+                Log.w(TAG, "❌ Неверный temp2: '$temp2'")
+                return false
+            }
+
+            val closed = parts[3].trim().toIntOrNull()
+            Log.d(TAG, "🔬 Closed: '${parts[3].trim()}' -> $closed")
+            if (closed == null || closed !in 0..1) {
+                Log.w(TAG, "❌ Неверный closed: $closed")
+                return false
+            }
+
+            val state = parts[4].trim().toIntOrNull()
+            Log.d(TAG, "🔬 State: '${parts[4].trim()}' -> $state")
+            if (state == null || state < 0) {
+                Log.w(TAG, "❌ Неверный state: $state")
+                return false
+            }
+
+            val overload = parts[5].trim().toFloatOrNull()
+            Log.d(TAG, "🔬 Overload: '${parts[5].trim()}' -> $overload")
+            if (overload == null || overload < 0.0f) {
+                Log.w(TAG, "❌ Неверный overload: $overload")
+                return false
+            }
+
+            Log.d(TAG, "✅ Все параметры Arduino валидны")
+            true
+
         } catch (e: Exception) {
+            Log.e(TAG, "💥 Исключение при проверке Arduino данных: ${e.message}")
             false
         }
     }
@@ -788,6 +966,9 @@ class BluetoothHelper(private val context: Context) {
         locationManager: EnhancedLocationManager,
         onStatusChange: (Boolean, Boolean) -> Unit
     ) {
+        // === НОВОЕ: Сброс аутентификации ===
+        resetAuthenticationOnDisconnect()
+
         isConnected = false
         LogModule.logEventWithLocation(
             context!!, this, locationManager, "Bluetooth отключен"

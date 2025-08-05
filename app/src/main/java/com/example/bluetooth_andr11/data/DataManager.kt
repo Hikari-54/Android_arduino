@@ -7,6 +7,7 @@ import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.log.LogModule
 import com.example.bluetooth_andr11.monitoring.TemperatureMonitor
+import com.example.bluetooth_andr11.network.DjangoApiClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
  * - Обновление reactive UI состояний
  * - Интеллектуальное логирование событий с предотвращением спама
  * - Передача данных в специализированные мониторы (температура, акселерометр)
+ * - Отправка данных на Django сервер для веб-панели мониторинга
  * - Кэширование последних значений для анализа изменений
  *
  * Поддерживаемый формат данных Arduino:
@@ -36,6 +38,7 @@ import kotlinx.coroutines.launch
  * - Минимальное влияние на производительность UI потока
  * - Автоматическая фильтрация повторяющихся событий
  * - Интеграция с существующими системами логирования и мониторинга
+ * - Параллельная отправка данных в Django без блокировки основного потока
  */
 class DataManager(
     private val context: Context,
@@ -73,7 +76,15 @@ class DataManager(
 
         /** Разница в заряде батареи для логирования изменений */
         private const val BATTERY_LOG_THRESHOLD = 5
+
+        /** Интервал отправки данных на Django сервер */
+        private const val DJANGO_SEND_INTERVAL_MS = 30000L // 30 секунд
     }
+
+    // === КОМПОНЕНТЫ ===
+
+    /** Django API клиент для отправки данных на веб-сервер */
+    private val djangoClient = DjangoApiClient(context)
 
     // === КЭШИРОВАНИЕ ДАННЫХ ===
 
@@ -89,6 +100,10 @@ class DataManager(
     @Volatile
     private var lastAccelerometerLogTime = 0L
 
+    /** Время последней отправки данных в Django */
+    @Volatile
+    private var lastDjangoSendTime = 0L
+
     /** Счётчик некорректных данных для диагностики */
     @Volatile
     private var invalidDataCount = 0
@@ -96,6 +111,14 @@ class DataManager(
     /** Общий счётчик обработанных пакетов данных */
     @Volatile
     private var totalPacketsProcessed = 0
+
+    /** Счётчик успешных отправок в Django */
+    @Volatile
+    private var djangoSuccessCount = 0
+
+    /** Счётчик неудачных отправок в Django */
+    @Volatile
+    private var djangoFailureCount = 0
 
     // === ОСНОВНЫЕ МЕТОДЫ ОБРАБОТКИ ДАННЫХ ===
 
@@ -108,6 +131,7 @@ class DataManager(
      * 3. Обновление UI состояний через reactive variables
      * 4. Передача данных в специализированные мониторы
      * 5. Логирование значимых событий
+     * 6. Отправка данных на Django сервер (если прошел интервал)
      *
      * @param rawData строка данных в формате "battery,temp1,temp2,closed,state,overload"
      * @param uiStates объект содержащий все reactive состояния UI
@@ -129,6 +153,10 @@ class DataManager(
                     updateAllUIStates(parsedData, uiStates)
                     forwardToMonitors(parsedData)
                     logSignificantEvents(parsedData)
+
+                    // === НОВОЕ: Отправка данных в Django ===
+                    sendToDjangoIfNeeded(rawData, uiStates)
+
                 } else {
                     handleInvalidData(rawData, "Ошибка парсинга данных")
                 }
@@ -148,6 +176,97 @@ class DataManager(
             }
         } catch (e: Exception) {
             handleInvalidData(rawData, "Критическая ошибка обработки: ${e.message}")
+        }
+    }
+
+    // === ОТПРАВКА ДАННЫХ В DJANGO ===
+
+    /**
+     * Отправляет данные на Django сервер с ограничением по времени.
+     *
+     * @param rawData исходные данные Arduino
+     * @param uiStates состояния UI для получения кнопок управления
+     */
+    private fun sendToDjangoIfNeeded(rawData: String, uiStates: UIStates) {
+        val currentTime = System.currentTimeMillis()
+
+        // Отправляем только если прошел интервал
+        if (currentTime - lastDjangoSendTime >= DJANGO_SEND_INTERVAL_MS) {
+            lastDjangoSendTime = currentTime
+
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    // Получаем GPS данные
+                    val locationInfo = locationManager.getLocationInfo()
+                    val (lat, lon, accuracy) = parseGpsCoordinates(
+                        locationInfo.coordinates,
+                        locationInfo.accuracy
+                    )
+
+                    // Получаем состояния кнопок управления
+                    val buttonStates = mapOf(
+                        "heating_enabled" to uiStates.isHeatOn.value,
+                        "cooling_enabled" to uiStates.isCoolOn.value,
+                        "light_enabled" to uiStates.isLightOn.value
+                    )
+
+                    // Отправляем данные в Django
+                    val success = djangoClient.sendSensorData(
+                        sensorData = rawData,
+                        buttonStates = buttonStates,
+                        gpsLat = lat,
+                        gpsLon = lon,
+                        gpsAccuracy = accuracy
+                    )
+
+                    if (success) {
+                        djangoSuccessCount++
+                        Log.d(TAG, "📤 Данные отправлены в Django (успешных: $djangoSuccessCount)")
+                    } else {
+                        djangoFailureCount++
+                        Log.w(
+                            TAG,
+                            "⚠️ Не удалось отправить данные в Django (неудач: $djangoFailureCount)"
+                        )
+                    }
+
+                } catch (e: Exception) {
+                    djangoFailureCount++
+                    Log.e(TAG, "❌ Ошибка отправки в Django: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Парсит GPS координаты из строки формата "55.7558, 37.6176".
+     *
+     * @param coordinates строка координат
+     * @param accuracy точность GPS
+     * @return Triple(latitude, longitude, accuracy) или (null, null, null)
+     */
+    private fun parseGpsCoordinates(
+        coordinates: String,
+        accuracy: Float
+    ): Triple<Double?, Double?, Float?> {
+        return if (coordinates != "Неизвестно") {
+            try {
+                val coords = coordinates.split(", ")
+                if (coords.size == 2) {
+                    Triple(
+                        coords[0].toDoubleOrNull(),
+                        coords[1].toDoubleOrNull(),
+                        accuracy
+                    )
+                } else {
+                    Triple(null, null, null)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ Ошибка парсинга GPS координат: ${e.message}")
+                Triple(null, null, null)
+            }
+        } else {
+            Triple(null, null, null)
         }
     }
 
@@ -455,12 +574,19 @@ class DataManager(
             ((totalPacketsProcessed - invalidDataCount).toFloat() / totalPacketsProcessed * 100).toInt()
         } else 100
 
+        val djangoSuccessRate = if (djangoSuccessCount + djangoFailureCount > 0) {
+            (djangoSuccessCount.toFloat() / (djangoSuccessCount + djangoFailureCount) * 100).toInt()
+        } else 100
+
         return DataProcessingStatistics(
             totalPacketsProcessed = totalPacketsProcessed,
             invalidPacketsCount = invalidDataCount,
             successRate = successRate,
             lastLoggedBatteryLevel = lastLoggedBatteryLevel,
-            lastLoggedBagState = lastLoggedBagState ?: "Неизвестно"
+            lastLoggedBagState = lastLoggedBagState ?: "Неизвестно",
+            djangoSuccessCount = djangoSuccessCount,
+            djangoFailureCount = djangoFailureCount,
+            djangoSuccessRate = djangoSuccessRate
         )
     }
 
@@ -474,6 +600,9 @@ class DataManager(
         lastLoggedBatteryLevel = 101
         lastLoggedBagState = null
         lastAccelerometerLogTime = 0L
+        lastDjangoSendTime = 0L
+        djangoSuccessCount = 0
+        djangoFailureCount = 0
 
         Log.d(TAG, "🔄 Статистика DataManager сброшена")
     }
@@ -487,7 +616,38 @@ class DataManager(
                 "Обработано: ${stats.totalPacketsProcessed} | " +
                 "Ошибок: ${stats.invalidPacketsCount} | " +
                 "Батарея: ${stats.lastLoggedBatteryLevel}% | " +
-                "Сумка: ${stats.lastLoggedBagState}"
+                "Сумка: ${stats.lastLoggedBagState} | " +
+                "Django: ${stats.djangoSuccessRate}% (${stats.djangoSuccessCount}/${stats.djangoSuccessCount + stats.djangoFailureCount})"
+    }
+
+    /**
+     * Принудительно отправляет тестовые данные в Django (для отладки).
+     */
+    fun forceSendTestDataToDjango() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val testData = "85,25.5,15.2,1,2,0.15"
+                val success = djangoClient.sendSensorData(
+                    sensorData = testData,
+                    buttonStates = mapOf(
+                        "heating_enabled" to false,
+                        "cooling_enabled" to true,
+                        "light_enabled" to false
+                    ),
+                    gpsLat = 55.7558,
+                    gpsLon = 37.6176,
+                    gpsAccuracy = 3.5f
+                )
+
+                if (success) {
+                    Log.d(TAG, "✅ Тестовые данные успешно отправлены в Django")
+                } else {
+                    Log.e(TAG, "❌ Ошибка отправки тестовых данных в Django")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "💥 Исключение при отправке тестовых данных: ${e.message}")
+            }
+        }
     }
 
     // === DATA CLASSES ===
@@ -550,19 +710,25 @@ class DataManager(
      * @param successRate процент успешно обработанных пакетов
      * @param lastLoggedBatteryLevel последний залогированный уровень батареи
      * @param lastLoggedBagState последнее залогированное состояние сумки
+     * @param djangoSuccessCount количество успешных отправок в Django
+     * @param djangoFailureCount количество неудачных отправок в Django
+     * @param djangoSuccessRate процент успешных отправок в Django
      */
     data class DataProcessingStatistics(
         val totalPacketsProcessed: Int,
         val invalidPacketsCount: Int,
         val successRate: Int,
         val lastLoggedBatteryLevel: Int,
-        val lastLoggedBagState: String
+        val lastLoggedBagState: String,
+        val djangoSuccessCount: Int = 0,
+        val djangoFailureCount: Int = 0,
+        val djangoSuccessRate: Int = 100
     ) {
         /**
          * Проверяет, есть ли проблемы с обработкой данных.
          */
         fun hasIssues(): Boolean {
-            return successRate < 80 || invalidPacketsCount > 50
+            return successRate < 80 || invalidPacketsCount > 50 || djangoSuccessRate < 70
         }
 
         /**
@@ -585,7 +751,28 @@ class DataManager(
                 recommendations.add("Нет обработанных данных - проверьте подключение")
             }
 
+            if (djangoSuccessRate < 70) {
+                recommendations.add("Проблемы с отправкой данных на Django сервер")
+                recommendations.add("Проверьте WiFi соединение и доступность сервера")
+            }
+
+            if (djangoSuccessCount + djangoFailureCount == 0) {
+                recommendations.add("Данные в Django еще не отправлялись")
+            }
+
             return recommendations
+        }
+
+        /**
+         * Возвращает детальную информацию о статистике Django.
+         */
+        fun getDjangoSummary(): String {
+            val total = djangoSuccessCount + djangoFailureCount
+            return if (total > 0) {
+                "Django: $djangoSuccessCount/$total успешных ($djangoSuccessRate%)"
+            } else {
+                "Django: данные еще не отправлялись"
+            }
         }
     }
 
@@ -599,6 +786,10 @@ class DataManager(
         val temp2: MutableState<String>,
         val hallState: MutableState<String>,
         val functionState: MutableState<String>,
-        val accelerometerData: MutableState<String>
+        val accelerometerData: MutableState<String>,
+        // Новые поля для состояний кнопок управления
+        val isHeatOn: MutableState<Boolean>,
+        val isCoolOn: MutableState<Boolean>,
+        val isLightOn: MutableState<Boolean>
     )
 }

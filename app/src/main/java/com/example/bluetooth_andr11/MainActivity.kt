@@ -252,6 +252,12 @@ class MainActivity : ComponentActivity() {
                         onNavigateToLogs = { navController.navigate("log_screen") },
                         bluetoothHelper = appInitializer.bluetoothHelper,
                         locationManager = appInitializer.enhancedLocationManager,
+                        // НОВЫЙ ПАРАМЕТР: передаем AuthenticationManager
+                        authenticationManager = if (::appInitializer.isInitialized) {
+                            appInitializer.authenticationManager
+                        } else {
+                            null
+                        }
                     )
                 }
 

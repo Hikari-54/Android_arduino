@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.compose.runtime.MutableState
 import com.example.bluetooth_andr11.BuildConfig
+import com.example.bluetooth_andr11.auth.AuthenticationManager
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.data.DataManager
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
@@ -39,10 +40,11 @@ import com.google.android.gms.location.LocationServices
  * 1. PermissionHelper - базовые разрешения Android
  * 2. EnhancedLocationManager - GPS и местоположение
  * 3. BluetoothHelper - подключение к Arduino
- * 4. TemperatureMonitor - анализ температурных данных
- * 5. DataManager - централизованная обработка данных
- * 6. Monitoring setup - настройка всех мониторингов
- * 7. Features initialization - активация основных функций
+ * 4. AuthenticationManager - аутентификация доставочных сумок
+ * 5. TemperatureMonitor - анализ температурных данных
+ * 6. DataManager - централизованная обработка данных
+ * 7. Monitoring setup - настройка всех мониторингов
+ * 8. Features initialization - активация основных функций
  */
 class AppInitializer(
     private val activity: ComponentActivity,
@@ -53,9 +55,6 @@ class AppInitializer(
 
         /** Задержка автозапуска симуляции в DEBUG режиме */
         private const val SIMULATION_AUTO_START_DELAY_MS = 3000L
-
-        /** Время ожидания инициализации компонентов */
-        private const val COMPONENT_INIT_TIMEOUT_MS = 10000L
     }
 
     // === ИНИЦИАЛИЗИРОВАННЫЕ КОМПОНЕНТЫ ===
@@ -70,6 +69,10 @@ class AppInitializer(
 
     /** Управление Bluetooth подключением к Arduino */
     lateinit var bluetoothHelper: BluetoothHelper
+        private set
+
+    /** Менеджер аутентификации доставочных сумок */
+    lateinit var authenticationManager: AuthenticationManager
         private set
 
     /** Интеллектуальный мониторинг температуры */
@@ -93,7 +96,8 @@ class AppInitializer(
     private var initializedComponentsCount = 0
 
     /** Общее количество компонентов для инициализации */
-    private val totalComponentsCount = 5
+    private val totalComponentsCount =
+        6  // Обновлено: было 5, стало 6 (добавлен AuthenticationManager)
 
     // === ОСНОВНЫЕ МЕТОДЫ ИНИЦИАЛИЗАЦИИ ===
 
@@ -152,10 +156,13 @@ class AppInitializer(
         // 3. BluetoothHelper - Arduino подключение
         if (!initializeBluetoothHelper()) return false
 
-        // 4. TemperatureMonitor - анализ температуры (зависит от Bluetooth + Location)
+        // 4. AuthenticationManager - аутентификация сумок (зависит от BT + Location)
+        if (!initializeAuthenticationManager()) return false
+
+        // 5. TemperatureMonitor - анализ температуры (зависит от Bluetooth + Location)
         if (!initializeTemperatureMonitor()) return false
 
-        // 5. DataManager - обработка данных (зависит от всех предыдущих)
+        // 6. DataManager - обработка данных (зависит от всех предыдущих)
         if (!initializeDataManager()) return false
 
         Log.d(TAG, "✅ Все $totalComponentsCount компонентов инициализированы успешно")
@@ -169,54 +176,89 @@ class AppInitializer(
      */
     private fun initializePermissionHelper(): Boolean {
         return try {
-            permissionHelper = PermissionHelper(activity, requestPermissionsLauncher)
-            initializedComponentsCount++
-            Log.d(
-                TAG,
-                "✅ PermissionHelper инициализирован ($initializedComponentsCount/$totalComponentsCount)"
+            Log.d(TAG, "🔐 Инициализация PermissionHelper...")
+
+            permissionHelper = PermissionHelper(
+                context = activity,
+                requestPermissionLauncher = requestPermissionsLauncher
             )
+
+            initializedComponentsCount++
+            Log.i(TAG, "✅ PermissionHelper инициализирован успешно")
             true
+
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка инициализации PermissionHelper: ${e.message}")
+            Log.e(TAG, "❌ Ошибка инициализации PermissionHelper: ${e.message}", e)
             false
         }
     }
 
     /**
-     * Инициализирует EnhancedLocationManager для GPS и местоположения.
+     * Инициализирует EnhancedLocationManager для работы с GPS и местоположением.
      */
     private fun initializeLocationManager(): Boolean {
         return try {
+            Log.d(TAG, "📍 Инициализация EnhancedLocationManager...")
+
+            val fusedLocationClient = LocationServices.getFusedLocationProviderClient(activity)
             enhancedLocationManager = EnhancedLocationManager(
                 context = activity,
-                fusedLocationClient = LocationServices.getFusedLocationProviderClient(activity)
+                fusedLocationClient = fusedLocationClient
             )
+
             initializedComponentsCount++
-            Log.d(
-                TAG,
-                "✅ EnhancedLocationManager инициализирован ($initializedComponentsCount/$totalComponentsCount)"
-            )
+            Log.i(TAG, "✅ EnhancedLocationManager инициализирован успешно")
             true
+
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка инициализации LocationManager: ${e.message}")
+            Log.e(TAG, "❌ Ошибка инициализации EnhancedLocationManager: ${e.message}", e)
             false
         }
     }
 
     /**
-     * Инициализирует BluetoothHelper для подключения к Arduino.
+     * Инициализирует BluetoothHelper для подключения к Arduino устройствам.
      */
     private fun initializeBluetoothHelper(): Boolean {
         return try {
+            Log.d(TAG, "📡 Инициализация BluetoothHelper...")
+
             bluetoothHelper = BluetoothHelper(activity)
+
             initializedComponentsCount++
-            Log.d(
-                TAG,
-                "✅ BluetoothHelper инициализирован ($initializedComponentsCount/$totalComponentsCount)"
-            )
+            Log.i(TAG, "✅ BluetoothHelper инициализирован успешно")
             true
+
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка инициализации BluetoothHelper: ${e.message}")
+            Log.e(TAG, "❌ Ошибка инициализации BluetoothHelper: ${e.message}", e)
+            false
+        }
+    }
+
+    /**
+     * Инициализирует AuthenticationManager для аутентификации доставочных сумок.
+     *
+     * @return true если инициализация прошла успешно
+     */
+    private fun initializeAuthenticationManager(): Boolean {
+        return try {
+            Log.d(TAG, "🔐 Инициализация AuthenticationManager...")
+
+            authenticationManager = AuthenticationManager(
+                context = activity,
+                bluetoothHelper = bluetoothHelper,
+                locationManager = enhancedLocationManager
+            )
+
+            // Связываем AuthenticationManager с BluetoothHelper
+            bluetoothHelper.setAuthenticationManager(authenticationManager)
+
+            initializedComponentsCount++
+            Log.i(TAG, "✅ AuthenticationManager инициализирован успешно")
+            true
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка инициализации AuthenticationManager: ${e.message}", e)
             false
         }
     }
@@ -226,35 +268,44 @@ class AppInitializer(
      */
     private fun initializeTemperatureMonitor(): Boolean {
         return try {
-            temperatureMonitor =
-                TemperatureMonitor(activity, bluetoothHelper, enhancedLocationManager)
-            initializedComponentsCount++
-            Log.d(
-                TAG,
-                "✅ TemperatureMonitor инициализирован ($initializedComponentsCount/$totalComponentsCount)"
+            Log.d(TAG, "🌡️ Инициализация TemperatureMonitor...")
+
+            temperatureMonitor = TemperatureMonitor(
+                context = activity,
+                bluetoothHelper = bluetoothHelper,
+                locationManager = enhancedLocationManager
             )
+
+            initializedComponentsCount++
+            Log.i(TAG, "✅ TemperatureMonitor инициализирован успешно")
             true
+
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка инициализации TemperatureMonitor: ${e.message}")
+            Log.e(TAG, "❌ Ошибка инициализации TemperatureMonitor: ${e.message}", e)
             false
         }
     }
 
     /**
-     * Инициализирует DataManager для централизованной обработки данных.
+     * Инициализирует DataManager для централизованной обработки данных Arduino.
      */
     private fun initializeDataManager(): Boolean {
         return try {
-            dataManager =
-                DataManager(activity, bluetoothHelper, enhancedLocationManager, temperatureMonitor)
-            initializedComponentsCount++
-            Log.d(
-                TAG,
-                "✅ DataManager инициализирован ($initializedComponentsCount/$totalComponentsCount)"
+            Log.d(TAG, "💾 Инициализация DataManager...")
+
+            dataManager = DataManager(
+                context = activity,
+                bluetoothHelper = bluetoothHelper,
+                locationManager = enhancedLocationManager,
+                temperatureMonitor = temperatureMonitor
             )
+
+            initializedComponentsCount++
+            Log.i(TAG, "✅ DataManager инициализирован успешно")
             true
+
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка инициализации DataManager: ${e.message}")
+            Log.e(TAG, "❌ Ошибка инициализации DataManager: ${e.message}", e)
             false
         }
     }
@@ -262,146 +313,68 @@ class AppInitializer(
     // === НАСТРОЙКА МОНИТОРИНГА ===
 
     /**
-     * Настраивает мониторинг всех критически важных систем.
+     * Настраивает все системы мониторинга после успешной инициализации компонентов.
      */
     private fun setupAllMonitoring() {
-        Log.d(TAG, "📡 Настройка системы мониторинга...")
-        // Мониторинг будет настроен в MainActivity через dedicated методы
-        // чтобы не создавать дополнительные зависимости в AppInitializer
-        Log.d(TAG, "✅ Мониторинг подготовлен к активации")
-    }
-
-    // === ПРОВЕРКА РАЗРЕШЕНИЙ ===
-
-    /**
-     * Выполняет начальную проверку разрешений и запускает процесс получения недостающих.
-     *
-     * @param onPermissionsResult callback с результатом проверки разрешений
-     */
-    fun checkInitialPermissions(onPermissionsResult: (Boolean) -> Unit) {
-        if (!::permissionHelper.isInitialized) {
-            Log.e(TAG, "❌ PermissionHelper не инициализирован")
-            onPermissionsResult(false)
-            return
-        }
-
-        val hasAllPermissions = permissionHelper.hasAllPermissions()
-
-        if (hasAllPermissions) {
-            Log.d(TAG, "✅ Все разрешения уже предоставлены")
-            onPermissionsResult(true)
-        } else {
-            Log.d(TAG, "⚠️ Отсутствуют некоторые разрешения, запрашиваем...")
-            permissionHelper.requestPermissions()
-            // Результат будет обработан через ActivityResultLauncher в MainActivity
-        }
-    }
-
-    // === ИНИЦИАЛИЗАЦИЯ ОСНОВНЫХ ФУНКЦИЙ ===
-
-    /**
-     * Активирует основные функции приложения после получения всех разрешений.
-     *
-     * Включает:
-     * - GPS обновления с callback для координат
-     * - Принудительное обновление местоположения
-     * - Установка оптимального режима GPS
-     * - Логирование активации функций
-     *
-     * @param coordinatesState reactive состояние для координат
-     */
-    fun initializeAppFeatures(coordinatesState: MutableState<String>) {
-        if (!isFullyInitialized) {
-            Log.w(TAG, "⚠️ Попытка активации функций до завершения инициализации")
-            return
-        }
-
         try {
-            Log.d(TAG, "🚀 Активация основных функций приложения...")
+            Log.d(TAG, "📡 Настройка систем мониторинга...")
 
-            // Запускаем GPS обновления с reactive обновлением координат
-            enhancedLocationManager.startLocationUpdates { newCoordinates ->
-                coordinatesState.value = newCoordinates
-                Log.d(TAG, "📍 Координаты обновлены: $newCoordinates")
+            // Мониторинг Bluetooth состояния
+            bluetoothHelper.monitorBluetoothStatus(
+                context = activity,
+                locationManager = enhancedLocationManager
+            ) { isEnabled, isConnected ->
+                Log.d(TAG, "📡 Bluetooth статус: enabled=$isEnabled, connected=$isConnected")
             }
 
-            // Принудительно обновляем местоположение для быстрого получения данных
-            enhancedLocationManager.forceLocationUpdate(LocationMode.BALANCED)
+            // Мониторинг GPS состояния - startLocationUpdates принимает callback со строкой координат
+            enhancedLocationManager.startLocationUpdates { coordinates ->
+                Log.d(TAG, "📍 GPS обновление: $coordinates")
+            }
 
-            // Устанавливаем рекомендуемый режим GPS
-            val recommendedMode = enhancedLocationManager.getRecommendedMode()
-            enhancedLocationManager.setLocationMode(recommendedMode)
-
-            Log.d(TAG, "🎯 Установлен оптимальный режим GPS: $recommendedMode")
-            Log.d(TAG, "✅ Основные функции успешно активированы")
-
-            // Логируем активацию функций
-            LogModule.logSystemEvent(
-                activity, bluetoothHelper, enhancedLocationManager,
-                "Основные функции приложения активированы", "СИСТЕМА"
-            )
+            Log.i(TAG, "✅ Мониторинг систем настроен успешно")
 
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка активации основных функций: ${e.message}")
+            Log.e(TAG, "❌ Ошибка настройки мониторинга: ${e.message}", e)
         }
     }
 
-    // === НАСТРОЙКА МОНИТОРИНГА BLUETOOTH ===
+    // === ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ ===
 
     /**
-     * Настраивает мониторинг Bluetooth с reactive обновлениями состояний.
-     *
-     * @param bluetoothEnabledState reactive состояние Bluetooth адаптера
-     * @param deviceConnectedState reactive состояние подключения устройства
-     * @param onDataReceived callback для обработки данных от Arduino
+     * Автозапуск симуляции в DEBUG режиме с задержкой.
+     */
+    fun autoStartSimulationIfNeeded() {
+        if (BuildConfig.DEBUG && ::bluetoothHelper.isInitialized) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    bluetoothHelper.enableSimulationMode(true)
+                    Log.i(TAG, "🤖 Автозапуск симуляции в DEBUG режиме")
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Ошибка автозапуска симуляции: ${e.message}")
+                }
+            }, SIMULATION_AUTO_START_DELAY_MS)
+        }
+    }
+
+    /**
+     * Настраивает Bluetooth мониторинг с reactive обновлениями.
      */
     fun setupBluetoothMonitoring(
         bluetoothEnabledState: MutableState<Boolean>,
         deviceConnectedState: MutableState<Boolean>,
         onDataReceived: (String) -> Unit
     ) {
-        if (!::bluetoothHelper.isInitialized) {
-            Log.e(TAG, "❌ BluetoothHelper не инициализирован для мониторинга")
-            return
-        }
-
-        Log.d(TAG, "🔵 Настройка Bluetooth мониторинга...")
-
         bluetoothHelper.monitorBluetoothStatus(
-            activity,
-            enhancedLocationManager
+            context = activity,
+            locationManager = enhancedLocationManager
         ) { isEnabled, isConnected ->
             bluetoothEnabledState.value = isEnabled
             deviceConnectedState.value = isConnected
-
-            when {
-                isConnected -> {
-                    Log.d(TAG, "🟢 Bluetooth подключен, начинаем прослушивание данных")
-                    bluetoothHelper.listenForData { data ->
-                        onDataReceived(data)
-                    }
-                }
-
-                isEnabled && !isConnected -> {
-                    Log.d(TAG, "🟡 Bluetooth включен, но устройство не подключено")
-                    bluetoothHelper.showDeviceSelectionDialog(activity) { device ->
-                        bluetoothHelper.connectToDevice(device) { success, message ->
-                            Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()
-                            deviceConnectedState.value = success
-                        }
-                    }
-                }
-
-                else -> {
-                    Log.d(TAG, "🔴 Bluetooth отключен или недоступен")
-                }
-            }
         }
 
-        Log.d(TAG, "✅ Bluetooth мониторинг настроен")
+        bluetoothHelper.listenForData(onDataReceived)
     }
-
-    // === НАСТРОЙКА МОНИТОРИНГА GPS ===
 
     /**
      * Настраивает мониторинг GPS с reactive обновлениями и обработкой изменений состояния.
@@ -420,9 +393,9 @@ class AppInitializer(
 
         Log.d(TAG, "🛰️ Настройка GPS мониторинга...")
 
+        // Настраиваем слушатель изменений статуса GPS
         enhancedLocationManager.setLocationStatusChangeListener { isEnabled ->
             Log.d(TAG, "📍 GPS состояние изменилось: $isEnabled")
-
             activity.runOnUiThread {
                 locationEnabledState.value = isEnabled
                 onLocationEnabledChanged(isEnabled)
@@ -434,10 +407,8 @@ class AppInitializer(
                         "⚠️ GPS отключен! Функции местоположения недоступны.",
                         Toast.LENGTH_LONG
                     ).show()
-
                     LogModule.logGpsStateChange(
-                        activity,
-                        false,
+                        activity, false,
                         "GPS отключен пользователем во время работы"
                     )
                 } else {
@@ -446,14 +417,17 @@ class AppInitializer(
                         "✅ GPS включен! Функции местоположения восстановлены.",
                         Toast.LENGTH_SHORT
                     ).show()
-
                     LogModule.logGpsStateChange(
-                        activity,
-                        true,
+                        activity, true,
                         "GPS включен пользователем"
                     )
                 }
             }
+        }
+
+        // Запускаем обновления местоположения
+        enhancedLocationManager.startLocationUpdates { coordinates ->
+            Log.d(TAG, "📍 Новое местоположение: $coordinates")
         }
 
         // Проверяем начальное состояние GPS
@@ -464,84 +438,97 @@ class AppInitializer(
         Log.d(TAG, "✅ GPS мониторинг настроен, начальное состояние: $initialState")
     }
 
-    // === АВТОЗАПУСК СИМУЛЯЦИИ (DEBUG) ===
+    /**
+     * Проверяет начальные разрешения и вызывает callback с результатом.
+     */
+    fun checkInitialPermissions(onResult: (Boolean) -> Unit) {
+        val hasAllPermissions = permissionHelper.hasAllPermissions()
+        onResult(hasAllPermissions)
+
+        if (!hasAllPermissions) {
+            Log.w(TAG, "⚠️ Не все разрешения предоставлены, потребуется запрос")
+        }
+    }
 
     /**
-     * Автоматически запускает симуляцию Arduino в DEBUG режиме если устройство не подключено.
-     * Обеспечивает удобную разработку без необходимости реального Arduino.
+     * Инициализирует основные функции приложения после получения разрешений.
      */
-    fun autoStartSimulationIfNeeded() {
-        // Блокируем симуляцию в RELEASE режиме для безопасности
-        if (!BuildConfig.DEBUG) {
-            Log.d(TAG, "🚫 RELEASE режим: автозапуск симуляции заблокирован")
-            return
+    fun initializeAppFeatures(coordinatesState: MutableState<String>) {
+        try {
+            Log.d(TAG, "🚀 Инициализация функций приложения...")
+
+            // Запускаем получение координат - startLocationUpdates принимает callback со строкой
+            enhancedLocationManager.startLocationUpdates { coordinates ->
+                coordinatesState.value = coordinates
+                Log.d(TAG, "📍 Координаты обновлены: $coordinates")
+            }
+
+            // Принудительное обновление местоположения
+            enhancedLocationManager.forceLocationUpdate(LocationMode.BALANCED)
+
+            Log.i(TAG, "✅ Функции приложения инициализированы")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка инициализации функций: ${e.message}", e)
         }
+    }
 
-        if (!::bluetoothHelper.isInitialized) {
-            Log.w(TAG, "⚠️ BluetoothHelper не инициализирован для автозапуска симуляции")
-            return
-        }
+    // === ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ===
 
-        if (!bluetoothHelper.isDeviceConnected) {
-            Handler(Looper.getMainLooper()).postDelayed({
-                // Двойная проверка DEBUG режима и состояния подключения
-                if (BuildConfig.DEBUG && !bluetoothHelper.isDeviceConnected) {
-                    bluetoothHelper.enableSimulationMode(true)
-
-                    Toast.makeText(
-                        activity,
-                        "🔧 Запущена симуляция Arduino (DEBUG)",
-                        Toast.LENGTH_LONG
-                    ).show()
-
-                    LogModule.logSystemEvent(
-                        activity, bluetoothHelper, enhancedLocationManager,
-                        "Автозапуск симуляции Arduino (DEBUG режим)", "ОТЛАДКА"
-                    )
-
-                    Log.d(TAG, "🤖 Автозапуск симуляции выполнен успешно")
-                }
-            }, SIMULATION_AUTO_START_DELAY_MS)
+    /**
+     * Возвращает текущее состояние GPS.
+     * Безопасный метод для получения состояния местоположения.
+     */
+    fun isLocationEnabled(): Boolean {
+        return if (::enhancedLocationManager.isInitialized) {
+            enhancedLocationManager.isLocationEnabled.value
         } else {
-            Log.d(TAG, "🔗 Устройство уже подключено, симуляция не требуется")
+            false
         }
     }
 
-    // === ДИАГНОСТИКА И СТАТИСТИКА ===
-
     /**
-     * Возвращает статус инициализации всех компонентов.
-     *
-     * @return объект InitializationStatus с детальной информацией
+     * Возвращает статистику аутентификации для отладки.
      */
-    fun getInitializationStatus(): InitializationStatus {
-        val initDuration = if (initStartTime > 0) {
-            System.currentTimeMillis() - initStartTime
-        } else 0L
-
-        return InitializationStatus(
-            isFullyInitialized = isFullyInitialized,
-            initializedComponentsCount = initializedComponentsCount,
-            totalComponentsCount = totalComponentsCount,
-            initializationDurationMs = initDuration,
-            hasPermissionHelper = ::permissionHelper.isInitialized,
-            hasLocationManager = ::enhancedLocationManager.isInitialized,
-            hasBluetoothHelper = ::bluetoothHelper.isInitialized,
-            hasTemperatureMonitor = ::temperatureMonitor.isInitialized,
-            hasDataManager = ::dataManager.isInitialized
-        )
+    fun getAuthenticationStatistics(): AuthenticationManager.AuthenticationStatistics? {
+        return if (::authenticationManager.isInitialized) {
+            authenticationManager.getAuthenticationStatistics()
+        } else {
+            null
+        }
     }
 
+    // === СТАТУС И ДИАГНОСТИКА ===
+
     /**
-     * Проверяет готовность системы к работе.
+     * Проверяет готовность системы к полноценной работе.
      */
     fun isSystemReady(): Boolean {
         return isFullyInitialized &&
                 ::permissionHelper.isInitialized &&
                 ::enhancedLocationManager.isInitialized &&
                 ::bluetoothHelper.isInitialized &&
+                ::authenticationManager.isInitialized &&
                 ::temperatureMonitor.isInitialized &&
                 ::dataManager.isInitialized
+    }
+
+    /**
+     * Возвращает статус инициализации всех компонентов.
+     */
+    fun getInitializationStatus(): InitializationStatus {
+        return InitializationStatus(
+            isFullyInitialized = isFullyInitialized,
+            initializedComponents = initializedComponentsCount,
+            totalComponents = totalComponentsCount,
+            initializationDurationMs = if (initStartTime > 0) System.currentTimeMillis() - initStartTime else 0,
+            hasPermissionHelper = ::permissionHelper.isInitialized,
+            hasLocationManager = ::enhancedLocationManager.isInitialized,
+            hasBluetoothHelper = ::bluetoothHelper.isInitialized,
+            hasAuthenticationManager = ::authenticationManager.isInitialized,
+            hasTemperatureMonitor = ::temperatureMonitor.isInitialized,
+            hasDataManager = ::dataManager.isInitialized
+        )
     }
 
     /**
@@ -550,7 +537,7 @@ class AppInitializer(
     fun getStatusReport(): String {
         val status = getInitializationStatus()
         return "AppInitializer: ${if (status.isFullyInitialized) "✅" else "⏳"} | " +
-                "Компоненты: ${status.initializedComponentsCount}/${status.totalComponentsCount} | " +
+                "Компоненты: ${status.initializedComponents}/${status.totalComponents} | " +
                 "Время: ${status.initializationDurationMs}мс | " +
                 "Готовность: ${if (isSystemReady()) "🟢" else "🔴"}"
     }
@@ -567,10 +554,14 @@ class AppInitializer(
         Log.i(TAG, "✅ Все $totalComponentsCount компонентов готовы к работе")
 
         // Логируем успешную инициализацию в систему событий
-        LogModule.logSystemEvent(
-            activity, bluetoothHelper, enhancedLocationManager,
-            "Инициализация приложения завершена успешно за ${duration}мс", "СИСТЕМА"
-        )
+        try {
+            LogModule.logEventWithLocation(
+                activity, bluetoothHelper, enhancedLocationManager,
+                "Инициализация приложения завершена успешно за ${duration}мс"
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "⚠️ Не удалось записать лог успешной инициализации: ${e.message}")
+        }
     }
 
     /**
@@ -607,23 +598,81 @@ class AppInitializer(
     /**
      * Выполняет частичную очистку ресурсов при ошибках инициализации.
      */
-    fun cleanup() {
+    private fun performPartialCleanup() {
         try {
-            if (::enhancedLocationManager.isInitialized) {
-                enhancedLocationManager.cleanup()
+            Log.d(TAG, "🧹 Частичная очистка после ошибки инициализации...")
+
+            // Очищаем только успешно инициализированные компоненты
+            if (::dataManager.isInitialized) {
+                // DataManager не требует специальной очистки
             }
+
+            if (::temperatureMonitor.isInitialized) {
+                // TemperatureMonitor не требует специальной очистки
+            }
+
+            if (::authenticationManager.isInitialized) {
+                authenticationManager.resetAuthentication()
+            }
+
             if (::bluetoothHelper.isInitialized) {
                 bluetoothHelper.cleanup()
             }
-            if (::temperatureMonitor.isInitialized) {
-                temperatureMonitor.reset()
-            }
-            if (::dataManager.isInitialized) {
-                dataManager.resetStatistics()
+
+            if (::enhancedLocationManager.isInitialized) {
+                enhancedLocationManager.cleanup()
             }
 
+            Log.d(TAG, "✅ Частичная очистка завершена")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка частичной очистки: ${e.message}")
+        }
+    }
+
+    // === ОЧИСТКА РЕСУРСОВ ===
+
+    /**
+     * Очищает все ресурсы AppInitializer при закрытии приложения.
+     */
+    fun cleanup() {
+        try {
+            Log.d(TAG, "🧹 Начинаем полную очистку AppInitializer...")
+
+            // Очищаем компоненты в обратном порядке инициализации
+            if (::dataManager.isInitialized) {
+                // DataManager не требует специальной очистки
+                Log.d(TAG, "✅ DataManager очищен")
+            }
+
+            if (::temperatureMonitor.isInitialized) {
+                // TemperatureMonitor не требует специальной очистки
+                Log.d(TAG, "✅ TemperatureMonitor очищен")
+            }
+
+            if (::authenticationManager.isInitialized) {
+                authenticationManager.resetAuthentication()
+                Log.d(TAG, "✅ AuthenticationManager очищен")
+            }
+
+            if (::bluetoothHelper.isInitialized) {
+                bluetoothHelper.cleanup()
+                Log.d(TAG, "✅ BluetoothHelper очищен")
+            }
+
+            if (::enhancedLocationManager.isInitialized) {
+                enhancedLocationManager.cleanup()
+                Log.d(TAG, "✅ EnhancedLocationManager очищен")
+            }
+
+            // PermissionHelper не требует специальной очистки
+
+            // Сбрасываем флаги состояния
             isFullyInitialized = false
-            Log.d(TAG, "🧹 AppInitializer очищен")
+            initializedComponentsCount = 0
+
+            Log.d(TAG, "🧹 AppInitializer полностью очищен")
+
         } catch (e: Exception) {
             Log.e(TAG, "❌ Ошибка очистки AppInitializer: ${e.message}")
         }
@@ -632,80 +681,57 @@ class AppInitializer(
     // === DATA CLASSES ===
 
     /**
-     * Подробная информация о статусе инициализации для диагностики.
-     *
-     * @param isFullyInitialized завершена ли инициализация полностью
-     * @param initializedComponentsCount количество инициализированных компонентов
-     * @param totalComponentsCount общее количество компонентов
-     * @param initializationDurationMs время инициализации в миллисекундах
-     * @param hasPermissionHelper инициализирован ли PermissionHelper
-     * @param hasLocationManager инициализирован ли LocationManager
-     * @param hasBluetoothHelper инициализирован ли BluetoothHelper
-     * @param hasTemperatureMonitor инициализирован ли TemperatureMonitor
-     * @param hasDataManager инициализирован ли DataManager
+     * Статус инициализации всех компонентов приложения.
      */
     data class InitializationStatus(
         val isFullyInitialized: Boolean,
-        val initializedComponentsCount: Int,
-        val totalComponentsCount: Int,
+        val initializedComponents: Int,
+        val totalComponents: Int,
         val initializationDurationMs: Long,
         val hasPermissionHelper: Boolean,
         val hasLocationManager: Boolean,
         val hasBluetoothHelper: Boolean,
+        val hasAuthenticationManager: Boolean,  // НОВОЕ ПОЛЕ
         val hasTemperatureMonitor: Boolean,
         val hasDataManager: Boolean
     ) {
         /**
-         * Возвращает процент завершённости инициализации.
-         */
-        fun getCompletionPercentage(): Int {
-            return if (totalComponentsCount > 0) {
-                (initializedComponentsCount * 100) / totalComponentsCount
-            } else 0
-        }
-
-        /**
-         * Проверяет наличие критических проблем инициализации.
-         */
-        fun hasCriticalIssues(): Boolean {
-            return !hasPermissionHelper || !hasLocationManager || !hasBluetoothHelper
-        }
-
-        /**
-         * Возвращает список отсутствующих компонентов.
-         */
-        fun getMissingComponents(): List<String> {
-            val missing = mutableListOf<String>()
-            if (!hasPermissionHelper) missing.add("PermissionHelper")
-            if (!hasLocationManager) missing.add("LocationManager")
-            if (!hasBluetoothHelper) missing.add("BluetoothHelper")
-            if (!hasTemperatureMonitor) missing.add("TemperatureMonitor")
-            if (!hasDataManager) missing.add("DataManager")
-            return missing
-        }
-
-        /**
-         * Возвращает детальный отчёт о состоянии инициализации.
+         * Возвращает подробный отчёт о статусе инициализации с информацией об аутентификации.
          */
         fun getDetailedReport(): String {
             return buildString {
-                appendLine("🔧 ОТЧЁТ ИНИЦИАЛИЗАЦИИ:")
-                appendLine("═══════════════════════════")
-                appendLine("• Статус: ${if (isFullyInitialized) "✅ Завершено" else "⏳ В процессе"}")
-                appendLine("• Прогресс: $initializedComponentsCount/$totalComponentsCount (${getCompletionPercentage()}%)")
-                appendLine("• Время: ${initializationDurationMs}мс")
-                appendLine("• PermissionHelper: ${if (hasPermissionHelper) "✅" else "❌"}")
-                appendLine("• LocationManager: ${if (hasLocationManager) "✅" else "❌"}")
-                appendLine("• BluetoothHelper: ${if (hasBluetoothHelper) "✅" else "❌"}")
-                appendLine("• TemperatureMonitor: ${if (hasTemperatureMonitor) "✅" else "❌"}")
-                appendLine("• DataManager: ${if (hasDataManager) "✅" else "❌"}")
-
-                if (hasCriticalIssues()) {
-                    appendLine("⚠️ Обнаружены критические проблемы!")
-                    appendLine("• Отсутствуют: ${getMissingComponents().joinToString(", ")}")
-                }
-                appendLine("═══════════════════════════")
+                appendLine("=== INITIALIZATION STATUS REPORT ===")
+                appendLine("Статус: ${if (isFullyInitialized) "✅ Завершена" else "⏳ В процессе"}")
+                appendLine("Прогресс: $initializedComponents/$totalComponents компонентов")
+                appendLine("Время инициализации: ${initializationDurationMs}ms")
+                appendLine()
+                appendLine("Компоненты:")
+                appendLine("  PermissionHelper: ${if (hasPermissionHelper) "✅" else "❌"}")
+                appendLine("  LocationManager: ${if (hasLocationManager) "✅" else "❌"}")
+                appendLine("  BluetoothHelper: ${if (hasBluetoothHelper) "✅" else "❌"}")
+                appendLine("  AuthenticationManager: ${if (hasAuthenticationManager) "✅" else "❌"}")
+                appendLine("  TemperatureMonitor: ${if (hasTemperatureMonitor) "✅" else "❌"}")
+                appendLine("  DataManager: ${if (hasDataManager) "✅" else "❌"}")
+                appendLine("=====================================")
             }
+        }
+
+        /**
+         * Возвращает процент завершённости инициализации.
+         */
+        fun getCompletionPercentage(): Int {
+            return if (totalComponents > 0) {
+                (initializedComponents * 100) / totalComponents
+            } else {
+                0
+            }
+        }
+
+        /**
+         * Проверяет, есть ли критические проблемы с инициализацией.
+         */
+        fun hasCriticalIssues(): Boolean {
+            return !hasPermissionHelper || !hasLocationManager || !hasBluetoothHelper
         }
     }
 }

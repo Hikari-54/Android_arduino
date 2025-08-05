@@ -114,6 +114,20 @@ class UIStateManager {
     private val _showDebugPanel = mutableStateOf(false)
     val showDebugPanel: MutableState<Boolean> get() = _showDebugPanel
 
+    // === CONTROL STATES (Состояния управления) ===
+
+    /** Включен ли режим нагрева */
+    private val _isHeatOn = mutableStateOf(false)
+    val isHeatOn: MutableState<Boolean> get() = _isHeatOn
+
+    /** Включен ли режим охлаждения */
+    private val _isCoolOn = mutableStateOf(false)
+    val isCoolOn: MutableState<Boolean> get() = _isCoolOn
+
+    /** Включен ли режим подсветки */
+    private val _isLightOn = mutableStateOf(false)
+    val isLightOn: MutableState<Boolean> get() = _isLightOn
+
     // === СТАТИСТИКА И МОНИТОРИНГ ===
 
     /** Счётчик обновлений состояний для диагностики */
@@ -365,6 +379,45 @@ class UIStateManager {
         updateStatistics()
     }
 
+    /**
+     * Обновляет состояние режима нагрева.
+     */
+    fun updateHeatState(enabled: Boolean) {
+        val wasEnabled = _isHeatOn.value
+        _isHeatOn.value = enabled
+
+        if (wasEnabled != enabled) {
+            Log.d(TAG, "🔥 Нагрев: ${if (enabled) "включен" else "выключен"}")
+            updateStatistics()
+        }
+    }
+
+    /**
+     * Обновляет состояние режима охлаждения.
+     */
+    fun updateCoolState(enabled: Boolean) {
+        val wasEnabled = _isCoolOn.value
+        _isCoolOn.value = enabled
+
+        if (wasEnabled != enabled) {
+            Log.d(TAG, "❄️ Охлаждение: ${if (enabled) "включено" else "выключено"}")
+            updateStatistics()
+        }
+    }
+
+    /**
+     * Обновляет состояние режима подсветки.
+     */
+    fun updateLightState(enabled: Boolean) {
+        val wasEnabled = _isLightOn.value
+        _isLightOn.value = enabled
+
+        if (wasEnabled != enabled) {
+            Log.d(TAG, "💡 Подсветка: ${if (enabled) "включена" else "выключена"}")
+            updateStatistics()
+        }
+    }
+
     // === СОЗДАНИЕ КОНТЕЙНЕРОВ СОСТОЯНИЙ ===
 
     /**
@@ -380,7 +433,10 @@ class UIStateManager {
             temp2 = _temp2,
             hallState = _hallState,
             functionState = _functionState,
-            accelerometerData = _accelerometerData
+            accelerometerData = _accelerometerData,
+            isHeatOn = _isHeatOn,
+            isCoolOn = _isCoolOn,
+            isLightOn = _isLightOn
         )
     }
 
@@ -444,6 +500,11 @@ class UIStateManager {
         _temp2.value = DEFAULT_SENSOR_VALUE
         _hallState.value = DEFAULT_SENSOR_VALUE
         _accelerometerData.value = DEFAULT_SENSOR_VALUE
+
+        // Сбрасываем состояния управления
+        _isHeatOn.value = false
+        _isCoolOn.value = false
+        _isLightOn.value = false
 
         // Сбрасываем местоположение
         _coordinates.value = DEFAULT_COORDINATES
@@ -564,6 +625,11 @@ class UIStateManager {
             appendLine()
             appendLine("🎮 UI состояния:")
             appendLine("  • Панель отладки: ${if (_showDebugPanel.value) "✅" else "❌"}")
+            appendLine()
+            appendLine("🎛️ Управление:")
+            appendLine("  • Нагрев: ${if (_isHeatOn.value) "✅" else "❌"}")
+            appendLine("  • Охлаждение: ${if (_isCoolOn.value) "✅" else "❌"}")
+            appendLine("  • Подсветка: ${if (_isLightOn.value) "✅" else "❌"}")
             appendLine("═══════════════════════════════════════")
         }
     }

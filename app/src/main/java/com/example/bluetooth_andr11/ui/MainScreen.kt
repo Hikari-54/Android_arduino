@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -18,7 +21,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.bluetooth_andr11.auth.AuthenticationManager
 import com.example.bluetooth_andr11.bluetooth.BluetoothHelper
 import com.example.bluetooth_andr11.location.EnhancedLocationManager
 import com.example.bluetooth_andr11.ui.control.CardButton
@@ -36,7 +43,8 @@ fun MainScreen(
     acc: String,
     onNavigateToLogs: () -> Unit,
     bluetoothHelper: BluetoothHelper,
-    locationManager: EnhancedLocationManager
+    locationManager: EnhancedLocationManager,
+    authenticationManager: AuthenticationManager? = null  // НОВЫЙ ПАРАМЕТР
 ) {
     val context = LocalContext.current
 
@@ -127,9 +135,58 @@ fun MainScreen(
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    BagIdDisplay(authenticationManager = authenticationManager)
                 }
             }
         }
+    }
+}
+
+@Composable
+fun BagIdDisplay(authenticationManager: AuthenticationManager?) {
+    /**
+     * Компонент для отображения текущего ID аутентифицированной сумки
+     * Показывает временную информацию о подключенной сумке
+     */
+    val currentBagId = authenticationManager?.getCurrentBagId()
+    val isAuthenticated = authenticationManager?.isCurrentlyAuthenticated() ?: false
+
+    // Определяем цвет и текст в зависимости от состояния
+    val (displayText, backgroundColor, textColor) = when {
+        isAuthenticated && currentBagId != null -> {
+            Triple(
+                "🎒 Сумка: $currentBagId",
+                Color(0xFF1B5E20), // Темно-зеленый
+                Color.White
+            )
+        }
+
+        else -> {
+            Triple(
+                "🔍 Сумка не подключена",
+                Color(0xFF424242), // Серый
+                Color(0xFFBDBDBD)  // Светло-серый текст
+            )
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+    ) {
+        Text(
+            text = displayText,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            textAlign = TextAlign.Center,
+            color = textColor,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 
